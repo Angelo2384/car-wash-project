@@ -34,7 +34,7 @@ export default function HowItWorks() {
             <p className={styles.stepDesc}>
               Our professionals execute a meticulous clean using premium
               products and techniques.
-            </p>
+             </p>
           </div>
 
           {/* Step 3 */}
