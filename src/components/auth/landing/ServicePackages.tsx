@@ -1,10 +1,9 @@
-import React from "react";
 import { Check } from "lucide-react";
 
 const packages = [
   {
     name: "Express Exterior",
-    price: "$35",
+    price: "R120",
     description:
       "A fast, high-quality exterior clean to keep your vehicle looking fresh.",
     features: [
@@ -17,7 +16,7 @@ const packages = [
   },
   {
     name: "Premium Signature",
-    price: "$85",
+    price: "R220",
     description: "Our most popular package. A thorough clean inside and out.",
     features: [
       "Everything in Express Exterior",
@@ -31,7 +30,7 @@ const packages = [
   },
   {
     name: "Ultimate Detail",
-    price: "$195",
+    price: "R750",
     description:
       "The complete showroom reset. Deep cleaning and protection for every surface.",
     features: [
@@ -56,9 +55,11 @@ export default function ServicePackages() {
             <p className={styles.subtitle}>
               Transparent pricing for premium results. Select the level of care
               your vehicle needs today.
+              <span className="block text-burnt-orange font-semibold mt-2">
+                Prices starting at
+              </span>
             </p>
           </div>
-          <p className={styles.pricingDisclaimer}>Prices starting at</p>
         </div>
 
         <div className={styles.grid}>
@@ -133,12 +134,10 @@ export default function ServicePackages() {
 const styles = {
   section: "py-24 bg-white text-charcoal",
   container: "max-w-7xl mx-auto px-6 md:px-12",
-  header: "flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6",
+  header: "flex flex-col mb-16 gap-4",
   titleWrapper: "max-w-2xl",
   title: "text-3xl md:text-4xl font-bold mb-4",
   subtitle: "text-charcoal-700 text-lg",
-  pricingDisclaimer:
-    "text-sm font-medium text-charcoal-700 uppercase tracking-wider",
   grid: "grid md:grid-cols-3 gap-8",
 
   cardNormal:

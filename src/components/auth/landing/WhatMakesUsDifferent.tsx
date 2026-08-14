@@ -1,5 +1,4 @@
-import React from "react";
-import { MapPin, DollarSign, Gift, Zap, Smartphone } from "lucide-react";
+import { MapPin, DollarSign, Gift, Clock, Smartphone } from "lucide-react";
 
 export default function WhatMakesUsDifferent() {
   return (
@@ -19,7 +18,7 @@ export default function WhatMakesUsDifferent() {
           <div className={styles.largeBlock}>
             <div className={styles.largeBlockBgImage}>
               <img
-                src="https://images.unsplash.com/photo-1552930294-6b595f4c2974?auto=format&fit=crop&q=80&w=1200"
+                src="/images/come_to_us2.png"
                 alt="Detailing reflection"
                 className={styles.image}
               />
@@ -65,7 +64,7 @@ export default function WhatMakesUsDifferent() {
           {/* Medium Block */}
           <div className={styles.mediumBlockDark}>
             <div className={styles.iconWrapperDark}>
-              <Zap className={styles.iconOrange} />
+              <Clock className={styles.iconOrange} />
             </div>
             <h3 className={styles.blockTitleMedium}>Flexible Service</h3>
             <p className={styles.blockDescMediumLight}>

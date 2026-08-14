@@ -20,7 +20,7 @@ export default function HowItWorks() {
             </div>
             <h3 className={styles.stepTitle}>Request</h3>
             <p className={styles.stepDesc}>
-              Choose your service package and tell us where you want it—your
+              Choose your service package and tell us where you want it; your
               driveway, office, or our facility.
             </p>
           </div>
@@ -44,8 +44,8 @@ export default function HowItWorks() {
             </div>
             <h3 className={styles.stepTitle}>Earn & Save</h3>
             <p className={styles.stepDesc}>
-              Earn rewards with every wash and enjoy additional benefits if
-              you're a Veloce Member.
+              Enjoy your clean car and earn rewards automatically, especially if
+              you're a WashWizzy Member.
             </p>
           </div>
         </div>

@@ -1,5 +1,3 @@
-import React from 'react';
-import { Car } from 'lucide-react';
 
 export default function Footer() {
   return (
@@ -9,10 +7,11 @@ export default function Footer() {
           
           <div className={styles.colLarge}>
             <div className={styles.logoContainer}>
-              <div className={styles.logoBox}>
-                <Car className={styles.logoIcon} />
-              </div>
-              <span className={styles.logoText}>VELOCE</span>
+              <img
+                src="/images/logo.png"
+                alt="WashWizzy Logo"
+                className={styles.logoImage}
+              />
             </div>
             <p className={styles.brandDesc}>
               The premium car wash and detailing platform designed for your convenience. We bring the professional shine directly to your door.
@@ -54,7 +53,7 @@ export default function Footer() {
         </div>
         
         <div className={styles.bottomBar}>
-          <p>&copy; {new Date().getFullYear()} Veloce Car Care. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} WashWizzy. All rights reserved.</p>
           <div className={styles.legalLinks}>
             <a href="#" className={styles.link}>Privacy Policy</a>
             <a href="#" className={styles.link}>Terms of Service</a>
@@ -66,15 +65,13 @@ export default function Footer() {
 }
 
 const styles = {
-  footer: "bg-charcoal-900 text-soft-gray py-16 border-t border-charcoal-800",
+  footer: "bg-charcoal-900 text-soft-gray pt-16 pb-8 border-t border-charcoal-800",
   container: "max-w-7xl mx-auto px-6 md:px-12",
   grid: "grid grid-cols-2 md:grid-cols-12 gap-8 md:gap-12 mb-16",
   
   colLarge: "col-span-2 md:col-span-4",
-  logoContainer: "flex items-center gap-2 mb-6",
-  logoBox: "w-8 h-8 bg-burnt-orange rounded flex items-center justify-center",
-  logoIcon: "text-white w-5 h-5",
-  logoText: "font-display font-bold text-xl text-white tracking-wide",
+  logoContainer: "flex items-center mb-4",
+  logoImage: "h-24 w-auto object-contain -ml-3 -mt-4 -mb-4",
   brandDesc: "text-sm leading-relaxed max-w-xs",
   
   colSmall: "col-span-1 md:col-span-2",

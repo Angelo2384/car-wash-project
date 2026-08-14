@@ -1,4 +1,3 @@
-import React from "react";
 import { Home, Store } from "lucide-react";
 
 export default function WhatWeOffer() {
@@ -20,7 +19,7 @@ export default function WhatWeOffer() {
           <div className={styles.card}>
             <div className={styles.cardBackground}>
               <img
-                src="https://images.unsplash.com/photo-1550346062-8ceb11565159?auto=format&fit=crop&q=80&w=1200"
+                src="/images/come_to_you.png"
                 alt="Mobile car detailing service"
                 className={styles.cardImage1}
               />
@@ -48,7 +47,7 @@ export default function WhatWeOffer() {
           <div className={styles.cardAlt}>
             <div className={styles.cardBackground}>
               <img
-                src="https://images.unsplash.com/photo-1601362840469-51e4d8d58785?auto=format&fit=crop&q=80&w=1200"
+                src="/images/come_to_us.png"
                 alt="Premium car wash facility"
                 className={styles.cardImage2}
               />
@@ -81,17 +80,17 @@ const styles = {
   subtitle: "text-charcoal-700 text-lg",
   grid: "grid md:grid-cols-2 gap-8",
 
-  card: "group relative overflow-hidden rounded-2xl bg-charcoal text-white h-[500px] flex flex-col justify-end p-8",
+  card: "group relative overflow-hidden rounded-2xl bg-charcoal text-white h-[500px] flex flex-col justify-end p-8 hover:shadow-lg hover:shadow-black/40 hover:scale-[1.005] transition-all duration-300",
   cardAlt:
-    "group relative overflow-hidden rounded-2xl bg-charcoal-800 text-white h-[500px] flex flex-col justify-end p-8",
+    "group relative overflow-hidden rounded-2xl bg-charcoal text-white h-[500px] flex flex-col justify-end p-8 hover:shadow-lg hover:shadow-black/40 hover:scale-[1.005] transition-all duration-300",
 
   cardBackground: "absolute inset-0 z-0",
   cardImage1:
     "w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700",
   cardImage2:
-    "w-full h-full object-cover opacity-50 group-hover:scale-105 transition-transform duration-700 grayscale mix-blend-luminosity",
+    "w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700",
   gradientOverlay:
-    "absolute inset-0 bg-gradient-to-t from-charcoal-900 via-charcoal/50 to-transparent",
+    "absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/24",
 
   cardContent: "relative z-10",
   iconWrapper1:
