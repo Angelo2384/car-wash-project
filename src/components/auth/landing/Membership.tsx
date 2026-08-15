@@ -1,4 +1,5 @@
 import { Star, CheckCircle2 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 export default function Membership() {
   return (
@@ -81,7 +82,7 @@ export default function Membership() {
             </div>
           </div>
 
-          <button className={styles.button}>Become a Member</button>
+          <Link to="/auth/login" className={styles.button}>Become a Member</Link>
         </div>
       </div>
     </section>
@@ -125,5 +126,5 @@ const styles = {
   listTextOn: "text-white font-medium",
 
   button:
-    "bg-burnt-orange hover:bg-burnt-orange-dark text-white px-8 py-4 rounded font-semibold text-lg transition-colors",
+    "bg-burnt-orange hover:bg-burnt-orange-dark text-white px-8 py-4 rounded font-semibold text-lg transition-colors inline-block text-center",
 };

@@ -1,6 +1,9 @@
 import { ArrowRight, MapPin } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export default function Hero() {
+  const navigate = useNavigate();
+
   return (
     <section id="home" className={styles.section}>
       <div className={styles.backgroundContainer}>
@@ -37,13 +40,13 @@ export default function Hero() {
           </p>
 
           <div className={styles.buttonGroup}>
-            <button className={styles.primaryButton}>
+            <button className={styles.primaryButton} onClick={() => navigate('/auth/signup')}>
               Request a Wash
               <ArrowRight className={styles.buttonIcon} />
             </button>
-            <button className={styles.secondaryButton}>
+            <a href="#membership" className={styles.secondaryButton}>
               Explore Membership
-            </button>
+            </a>
           </div>
 
           <div className={styles.featuresList}>

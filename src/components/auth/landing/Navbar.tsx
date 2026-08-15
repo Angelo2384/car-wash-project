@@ -1,9 +1,11 @@
 import React from "react";
 import { Menu, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false);
   const [activeSection, setActiveSection] = React.useState("home");
+  const navigate = useNavigate();
 
   React.useEffect(() => {
     const observer = new IntersectionObserver(
@@ -77,8 +79,8 @@ export default function Navbar() {
           </div>
 
           <div className={styles.desktopButtonGroup}>
-            <button className={styles.signInButton}>Sign In</button>
-            <button className={styles.getStartedButton}>Get Started</button>
+            <button className={styles.signInButton} onClick={() => navigate('/auth/login')}>Sign In</button>
+            <button className={styles.getStartedButton} onClick={() => navigate('/auth/signup')}>Get Started</button>
           </div>
 
           {/* Mobile Toggle */}
@@ -135,8 +137,8 @@ export default function Navbar() {
           >
             How It Works
           </a>
-          <button className={styles.mobileSignInButton}>Sign In</button>
-          <button className={styles.mobileGetStartedButton}>Get Started</button>
+          <button className={styles.mobileSignInButton} onClick={() => navigate('/auth/login')}>Sign In</button>
+          <button className={styles.mobileGetStartedButton} onClick={() => navigate('/auth/signup')}>Get Started</button>
         </div>
       )}
     </nav>

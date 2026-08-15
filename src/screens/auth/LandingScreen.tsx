@@ -1,4 +1,3 @@
-import React from 'react';
 import Navbar from '../../components/auth/landing/Navbar';
 import Hero from '../../components/auth/landing/Hero';
 import WhatWeOffer from '../../components/auth/landing/WhatWeOffer';

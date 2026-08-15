@@ -1,5 +1,8 @@
+import { useNavigate } from "react-router-dom";
 
 export default function Footer() {
+  const navigate = useNavigate();
+
   return (
     <footer className={styles.footer}>
       <div className={styles.container}>
@@ -41,10 +44,10 @@ export default function Footer() {
           <div className={styles.colLarge}>
             <h4 className={styles.columnTitle}>Account</h4>
             <div className={styles.buttonGroup}>
-              <button className={styles.buttonSecondary}>
+              <button className={styles.buttonSecondary} onClick={() => navigate('/auth/login')}>
                 Sign In
               </button>
-              <button className={styles.buttonPrimary}>
+              <button className={styles.buttonPrimary} onClick={() => navigate('/auth/signup')}>
                 Create Account
               </button>
             </div>

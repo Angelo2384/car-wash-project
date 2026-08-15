@@ -1,6 +1,9 @@
 import { ArrowRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export default function FinalCTA() {
+  const navigate = useNavigate();
+
   return (
     <section className={styles.section}>
       <div className={styles.backgroundContainer}>
@@ -25,11 +28,11 @@ export default function FinalCTA() {
             earning rewards immediately.
           </p>
           <div className={styles.buttonGroup}>
-            <button className={styles.primaryButton}>
+            <button className={styles.primaryButton} onClick={() => navigate('/auth/signup')}>
               Create an Account
               <ArrowRight className={styles.buttonIcon} />
             </button>
-            <button className={styles.secondaryButton}>Sign In</button>
+            <button className={styles.secondaryButton} onClick={() => navigate('/auth/login')}>Sign In</button>
           </div>
         </div>
       </div>
