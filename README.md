@@ -1,75 +1,81 @@
-# React + TypeScript + Vite
+# 🚗 Car Wash Management System (Project3)
+A modern web-based solution designed to streamline operations for car wash businesses by digitizing bookings, payments, and staff management.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## 📌 Problem
+Many car wash businesses rely on manual booking systems, walk-ins, and informal payment tracking. This leads to:
+* Double bookings
+* Long waiting times
+* Poor schedule management
+* Inaccurate financial records
+* Limited visibility of services and pricing
 
-Currently, two official plugins are available:
+## 💡 Solution
+This project provides a centralized web application that allows:
+* Customers to book and manage appointments online
+* Staff to handle daily operations and walk-ins efficiently
+* Admins to manage services, payments, and business operations
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## ⚙️ Core Features
+### 👤 Client
+* Register and log in securely
+* View services, prices, and images
+* Book and manage appointments
+* Make online payments
+* View booking history
+* Rate completed services
 
-## React Compiler
+### 🧑‍🔧 Staff
+* Access staff dashboard
+* View daily appointments
+* Manage walk-in customers (queue system)
+* Mark appointments as completed or missed
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 🛠️ Admin
+* Manage staff accounts
+* Add, edit, or remove services
+* Update pricing
+* Approve/reject payments and manage refunds
+* View analytics and reports
+* Control schedules and availability
 
-## Expanding the ESLint configuration
+## 📋 Business Rules
+* Buffer time between appointments (e.g., 5-minute grace period)
+* Late arrivals beyond grace time are cancelled
+* Missed appointments can be rescheduled or partially refunded
+* Same-day cancellations receive partial refunds
+* Walk-ins are queued and do not override bookings
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🛠️ Tech Stack
+* **Backend:** Spring Boot (Java)
+* **Frontend:** React (JavaScript)
+* **Database:** MySQL
+* **Other:** HTML, CSS, QR Code Integration
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 🧰 Tools & Platforms
+* Figma (UI/UX Design)
+* Git & GitHub (Version Control)
+* VS Code and IntelliJ (IDEs)
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 📱 Additional Features
+* Responsive design (mobile & desktop)
+* QR code access for quick booking
+* Booking confirmations and references
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 🚫 Scope Limitations
+* No dedicated mobile application (web app only)
+* Limited to core booking and management features (no advanced AI yet)
 
-```
+## 🚀 Future Improvements
+* Mobile application (Android/iOS)
+* Automated payment verification
+* Notifications (SMS/Email reminders)
+* Advanced analytics dashboard
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 👨‍💻 Creators
+**Lyle Solomons**  
+**Ethan Williams**  
+**Redah Gamieldien**  
+**Angelo Adams**  
+**Qaasim Isaacs**  
+**Rameez Karriem**
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
