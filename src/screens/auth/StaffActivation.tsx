@@ -1,15 +1,23 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, type FormEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { auth, db } from '../../lib/firebase';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { collection, query, where, getDocs, setDoc, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { Mail, Lock, Eye, EyeOff, Hash, Info, ArrowLeft, Key } from 'lucide-react';
+import { useToast } from '../../contexts/ToastContext';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 
 export default function StaffActivation() {
   const [showPassword, setShowPassword] = useState(false);
+  const [employeeId, setEmployeeId] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { showToast } = useToast();
+  const navigate = useNavigate();
 
   const getPasswordStrength = () => {
     if (!password) return 0;
@@ -23,10 +31,63 @@ export default function StaffActivation() {
 
   const strength = getPasswordStrength();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    if (password !== confirmPassword) {
+      showToast("Passwords do not match.", "error");
+      return;
+    }
+
     setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 1500);
+
+    try {
+      const settingsDoc = await getDoc(doc(db, "settings", "auth"));
+      
+      if (!settingsDoc.exists() || !settingsDoc.data().staffAccessCode) {
+        throw new Error("Activation system is currently unavailable. Please contact an administrator.");
+      }
+
+      if (accessCode !== settingsDoc.data().staffAccessCode) {
+        throw new Error("Invalid access code.");
+      }
+
+      const staffQuery = query(
+        collection(db, "pre_registered_staff"), 
+        where("email", "==", email.toLowerCase()),
+        where("employeeId", "==", employeeId)
+      );
+      
+      const querySnapshot = await getDocs(staffQuery);
+
+      if (querySnapshot.empty) {
+        throw new Error("Could not find a pre-registered employee with that email and ID combination.");
+      }
+
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      
+      await setDoc(doc(db, "users", userCredential.user.uid), {
+        uid: userCredential.user.uid,
+        email: email.toLowerCase(),
+        employeeId,
+        role: 'staff',
+        createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp(),
+      });
+
+      const actionCodeSettings = {
+        url: `${window.location.origin}/auth/login`,
+        handleCodeInApp: false
+      };
+      await sendEmailVerification(userCredential.user, actionCodeSettings);
+      await auth.signOut();
+
+      navigate('/auth/verify-email', { state: { email, password } });
+    } catch (err: any) {
+      showToast(err.message || "Failed to activate account.", "error");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -51,6 +112,8 @@ export default function StaffActivation() {
           type="text"
           placeholder="e.g. EMP-1234"
           icon={<Hash className="w-5 h-5" />}
+          value={employeeId}
+          onChange={(e) => setEmployeeId(e.target.value)}
           required
         />
 
@@ -59,6 +122,8 @@ export default function StaffActivation() {
           type="email"
           placeholder="Enter registered email"
           icon={<Mail className="w-5 h-5" />}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           required
         />
 
@@ -68,7 +133,7 @@ export default function StaffActivation() {
           placeholder="Enter access code"
           icon={<Key className="w-5 h-5" />}
           value={accessCode}
-          onChange={(e) => setAccessCode(e.target.value.replace(/\D/g, ''))}
+          onChange={(e) => setAccessCode(e.target.value)}
           required
         />
         

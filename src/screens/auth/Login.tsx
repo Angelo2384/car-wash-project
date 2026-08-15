@@ -1,22 +1,100 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { auth, db } from '../../lib/firebase';
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, deleteUser } from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { useToast } from '../../contexts/ToastContext';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const { showToast } = useToast();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate login
-    setTimeout(() => {
+    
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      if (!userCredential.user.emailVerified) {
+        await auth.signOut();
+        navigate('/auth/verify-email', { state: { email, password } });
+        return;
+      }
+
+      const userDocRef = doc(db, "users", userCredential.user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const role = userDoc.data().role || 'customer';
+        navigate(`/dashboard/${role}`);
+      } else {
+        navigate('/dashboard/customer');
+      }
+    } catch (err: any) {
+      showToast("Invalid email or password", "error");
+    } finally {
       setIsLoading(false);
-      navigate('/auth/temp-sign-in');
-    }, 1000);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true);
+    const provider = new GoogleAuthProvider();
+    
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      
+      const userDocRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      if (!userDoc.exists()) {
+        // Prevent pre-registered staff from signing up via Google as customers
+        const staffQuery = query(
+          collection(db, "pre_registered_staff"),
+          where("email", "==", user.email?.toLowerCase())
+        );
+        const staffDocs = await getDocs(staffQuery);
+
+        if (!staffDocs.empty) {
+          await deleteUser(user);
+          showToast("This email is registered for staff. Please use the Staff Activation page.", "error");
+          return;
+        }
+
+        await setDoc(userDocRef, {
+          uid: user.uid,
+          fullName: user.displayName || '',
+          email: user.email,
+          phoneNumber: user.phoneNumber || '',
+          photoURL: user.photoURL || '',
+          role: 'customer',
+          createdAt: serverTimestamp(),
+          lastLogin: serverTimestamp(),
+        });
+        navigate('/dashboard/customer');
+      } else {
+        await setDoc(userDocRef, {
+          lastLogin: serverTimestamp()
+        }, { merge: true });
+        
+        const role = userDoc.data().role || 'customer';
+        navigate(`/dashboard/${role}`);
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to sign in with Google", "error");
+    } finally {
+      setIsGoogleLoading(false);
+    }
   };
 
   return (
@@ -32,6 +110,8 @@ export default function Login() {
           type="email"
           placeholder="Enter your email"
           icon={<Mail className="w-5 h-5" />}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
         />
         
         <div className="space-y-2">
@@ -41,6 +121,8 @@ export default function Login() {
               type={showPassword ? "text" : "password"}
               placeholder="Enter your password"
               icon={<Lock className="w-5 h-5" />}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
             />
             <button
               type="button"
@@ -80,7 +162,14 @@ export default function Login() {
         </div>
       </div>
 
-      <Button variant="outline" fullWidth className="group border-charcoal-700/50 hover:border-charcoal-600 bg-charcoal-900/30">
+      <Button 
+        type="button" 
+        onClick={handleGoogleSignIn}
+        variant="outline" 
+        fullWidth 
+        isLoading={isGoogleLoading}
+        className="group border-charcoal-700/50 hover:border-charcoal-600 bg-charcoal-900/30"
+      >
         <svg className="w-5 h-5 mr-2 opacity-80 group-hover:opacity-100 transition-opacity" viewBox="0 0 24 24" fill="currentColor">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
           <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>

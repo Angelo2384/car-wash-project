@@ -1,21 +1,36 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { auth } from '../../lib/firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function ForgotPassword() {
+  const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSent, setIsSent] = useState(false);
+  const { showToast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!email) return;
+
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const actionCodeSettings = {
+        url: `${window.location.origin}/auth/login`,
+        handleCodeInApp: false
+      };
+      
+      await sendPasswordResetEmail(auth, email, actionCodeSettings);
       setIsSent(true);
-    }, 1500);
+    } catch (error: any) {
+      showToast(error.message || "Failed to send reset email.", "error");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (isSent) {
@@ -53,6 +68,8 @@ export default function ForgotPassword() {
           type="email"
           placeholder="Enter your email"
           icon={<Mail className="w-5 h-5" />}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           required
         />
         
