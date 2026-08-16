@@ -3,12 +3,12 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  projectId: "washwizzy-dev-49122",
-  appId: "1:186558950093:web:c3a1341a464a802f4a1784",
-  storageBucket: "washwizzy-dev-49122.firebasestorage.app",
-  apiKey: "AIzaSyBvH-lIqxoc64EE44044l7XZQ9aSYOa0t0",
-  authDomain: "washwizzy-dev-49122.firebaseapp.com",
-  messagingSenderId: "186558950093",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
 };
 
 export const app = initializeApp(firebaseConfig);
