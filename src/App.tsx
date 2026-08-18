@@ -13,6 +13,7 @@ import CustomerSignUp from './screens/auth/CustomerSignUp';
 import StaffActivation from './screens/auth/StaffActivation';
 import ForgotPassword from './screens/auth/ForgotPassword';
 import VerifyEmail from './screens/auth/VerifyEmail';
+import CustomerDashboardLayout from './screens/dashboard/customer/CustomerDashboardLayout';
 import CustomerDashboard from './screens/dashboard/customer/CustomerDashboard';
 import StaffDashboard from './screens/dashboard/staff/StaffDashboard';
 import AdminDashboard from './screens/dashboard/admin/AdminDashboard';
@@ -39,7 +40,9 @@ export default function App() {
               <Route path="forgot-password" element={<ForgotPassword />} />
               <Route path="verify-email" element={<VerifyEmail />} />
             </Route>
-            <Route path="/dashboard/customer" element={<CustomerDashboard />} />
+            <Route path="/dashboard/customer" element={<CustomerDashboardLayout />}>
+              <Route index element={<CustomerDashboard />} />
+            </Route>
             <Route path="/dashboard/staff" element={<StaffDashboard />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />
           </Routes>

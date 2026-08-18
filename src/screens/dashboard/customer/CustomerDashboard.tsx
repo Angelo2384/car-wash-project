@@ -1,10 +1,9 @@
-
+import React from "react";
 
 export default function CustomerDashboard() {
   return (
-    <div className="min-h-screen bg-charcoal-900 text-white flex flex-col items-center justify-center p-4 text-center">
-      <h1 className="text-3xl font-display font-bold mb-4 text-burnt-orange">Customer Dashboard</h1>
-      <p className="text-soft-gray">This dashboard is currently under development.</p>
+    <div className="flex flex-col gap-6 pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-forwards text-[#F5F5F5] transition-colors duration-300">
+      {/* Content temporarily removed for testing */}
     </div>
   );
 }

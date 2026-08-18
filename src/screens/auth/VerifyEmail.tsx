@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { Mail, ArrowRight, RefreshCw } from 'lucide-react';
+import { Mail, RefreshCw } from 'lucide-react';
 import { auth } from '../../lib/firebase';
 import { signInWithEmailAndPassword, sendEmailVerification, signOut } from 'firebase/auth';
 import { useToast } from '../../contexts/ToastContext';
