@@ -15,6 +15,9 @@ import ForgotPassword from './screens/auth/ForgotPassword';
 import VerifyEmail from './screens/auth/VerifyEmail';
 import CustomerDashboardLayout from './screens/dashboard/customer/CustomerDashboardLayout';
 import CustomerDashboard from './screens/dashboard/customer/CustomerDashboard';
+import CustomerAppointments from './screens/dashboard/customer/CustomerAppointments';
+import CustomerReschedule from './screens/dashboard/customer/CustomerReschedule';
+import CustomerCancel from './screens/dashboard/customer/CustomerCancel';
 import StaffDashboard from './screens/dashboard/staff/StaffDashboard';
 import AdminDashboard from './screens/dashboard/admin/AdminDashboard';
 import { AuthProvider } from './contexts/AuthContext';
@@ -42,6 +45,9 @@ export default function App() {
             </Route>
             <Route path="/dashboard/customer" element={<CustomerDashboardLayout />}>
               <Route index element={<CustomerDashboard />} />
+              <Route path="appointments" element={<CustomerAppointments />} />
+              <Route path="appointments/reschedule" element={<CustomerReschedule />} />
+              <Route path="appointments/cancel" element={<CustomerCancel />} />
             </Route>
             <Route path="/dashboard/staff" element={<StaffDashboard />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />
