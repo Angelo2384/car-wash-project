@@ -25,6 +25,8 @@ import {
   DollarSign,
   ChevronRight,
 } from "lucide-react";
+import { updateProfile } from "firebase/auth";
+import { auth } from "../../../lib/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { Button } from "../../../components/ui/Button";
@@ -152,27 +154,36 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
 
 export default function CustomerProfile() {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, refreshUser } = useAuth();
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Per-user localStorage key helper — prevents data leaking between accounts.
+  const uid = currentUser?.uid;
+  const nameKey    = uid ? `ww_profile_name_${uid}`   : null;
+  const phoneKey   = uid ? `ww_profile_phone_${uid}`  : null;
+  const avatarKey  = uid ? `ww_profile_avatar_${uid}` : null;
+
   // Profile Information State with local persistence fallback
   const [profileName, setProfileName] = useState(() => {
+    // Firebase displayName is source of truth (kept in sync via updateProfile).
+    // Fall back to uid-scoped localStorage only when Firebase has no value.
     return (
-      localStorage.getItem("ww_profile_name") ||
       currentUser?.displayName ||
+      (nameKey ? localStorage.getItem(nameKey) : null) ||
       "Qaasim Isaacs"
     );
   });
   const [profilePhone, setProfilePhone] = useState(() => {
-    return localStorage.getItem("ww_profile_phone") || "+27 82 123 4567";
+    return (phoneKey ? localStorage.getItem(phoneKey) : null) || "+27 82 123 4567";
   });
   const [profileEmail] = useState(() => {
     return currentUser?.email || "qaasim@gmail.com";
   });
   const [profileAvatar, setProfileAvatar] = useState<string>(() => {
+    // localStorage leads for avatar: base64 uploads can't be stored in Firebase Auth photoURL.
     return (
-      localStorage.getItem("ww_profile_avatar") ||
+      (avatarKey ? localStorage.getItem(avatarKey) : null) ||
       currentUser?.photoURL ||
       "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250"
     );
@@ -232,7 +243,10 @@ export default function CustomerProfile() {
       reader.onloadend = () => {
         const result = reader.result as string;
         setProfileAvatar(result);
-        localStorage.setItem("ww_profile_avatar", result);
+        if (avatarKey) localStorage.setItem(avatarKey, result);
+        // Trigger re-render of all useAuth() consumers (e.g. sidebar) so they
+        // re-read localStorage and display the updated avatar immediately.
+        refreshUser();
         showToast("Profile image updated successfully!", "success");
       };
       reader.readAsDataURL(file);
@@ -240,16 +254,29 @@ export default function CustomerProfile() {
   };
 
   // Profile Edit Save
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editFormName.trim()) {
       showToast("Name cannot be empty", "error");
       return;
     }
+    try {
+      // Persist the display name to Firebase Auth so it propagates app-wide
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, { displayName: editFormName.trim() });
+      }
+    } catch (err) {
+      console.error("Failed to update Firebase Auth profile:", err);
+      showToast("Failed to update profile. Please try again.", "error");
+      return;
+    }
+    // Update local state and localStorage as fallback / offline cache
     setProfileName(editFormName);
     setProfilePhone(editFormPhone);
-    localStorage.setItem("ww_profile_name", editFormName);
-    localStorage.setItem("ww_profile_phone", editFormPhone);
+    if (nameKey)  localStorage.setItem(nameKey,  editFormName);
+    if (phoneKey) localStorage.setItem(phoneKey, editFormPhone);
+    // Force all useAuth() consumers (e.g. sidebar) to re-render with the new displayName
+    refreshUser();
     setIsEditProfileOpen(false);
     showToast("Profile details updated successfully!", "success");
   };

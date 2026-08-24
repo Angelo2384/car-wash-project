@@ -5,11 +5,13 @@ import { auth } from "../lib/firebase";
 interface AuthContextType {
   currentUser: User | null;
   loading: boolean;
+  refreshUser: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   currentUser: null,
   loading: true,
+  refreshUser: () => {},
 });
 
 export function useAuth() {
@@ -29,9 +31,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
+  // updateProfile() mutates auth.currentUser in-place without firing onAuthStateChanged.
+  // Spreading into a new object forces React to re-render all useAuth() consumers.
+  const refreshUser = () => {
+    if (auth.currentUser) {
+      setCurrentUser({ ...auth.currentUser } as User);
+    }
+  };
+
   const value = {
     currentUser,
     loading,
+    refreshUser,
   };
 
   return (
