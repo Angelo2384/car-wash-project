@@ -1,11 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../../contexts/AuthContext';
+import { getStoredAppointments, type StoredAppointment } from '../../../lib/appointments';
 import { Button } from '../../../components/ui/Button';
 import { Lock, Calendar, Clock, MapPin, User, ChevronRight } from 'lucide-react';
 
 export default function CustomerAppointments() {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'upcoming' | 'history'>('upcoming');
+  const [storedAppointments, setStoredAppointments] = useState<StoredAppointment[]>(() =>
+    getStoredAppointments(currentUser?.uid)
+  );
+
+  useEffect(() => {
+    setStoredAppointments(getStoredAppointments(currentUser?.uid));
+  }, [currentUser?.uid]);
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-forwards text-[#F5F5F5]">
@@ -41,6 +51,27 @@ export default function CustomerAppointments() {
         
         {activeTab === 'upcoming' && (
           <>
+            {/* Real / Stored Appointments */}
+            {storedAppointments.map((appt) => (
+              <AppointmentCard
+                key={appt.id}
+                status={appt.status}
+                statusColor={appt.statusColor}
+                date={appt.date}
+                time={appt.time}
+                location={appt.location}
+                vehicle={appt.vehicle}
+                price={appt.price}
+                packageName={appt.packageName}
+                staffName={appt.staffName}
+                staffStatus={appt.staffStatus}
+                isLocked={appt.isLocked}
+                cancellationPolicy={appt.cancellationPolicy}
+                onReschedule={() => navigate('/dashboard/customer/appointments/reschedule')}
+                onCancel={() => navigate('/dashboard/customer/appointments/cancel')}
+              />
+            ))}
+
             {/* Card 1: Staff on Route (locked) */}
             <AppointmentCard 
               status="Staff on route"
@@ -132,6 +163,7 @@ function AppointmentCard({
       case 'reward-green': return 'bg-[#35B86B]/15 text-[#35B86B] border-[#35B86B]/30';
       case 'red': return 'bg-red-500/10 text-red-500 border-red-500/20';
       case 'blue': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+      case 'amber': return 'bg-amber-500/15 text-amber-400 border-amber-500/30';
       default: return 'bg-[#1F1F1F] text-[#A1A1AA] border-[#2C2C2C]';
     }
   };

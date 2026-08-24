@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useToast } from '../../../contexts/ToastContext';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import {
@@ -62,6 +63,7 @@ function SectionCard({ title, children }: { title: string; children: React.React
 export default function CustomerBooking() {
   const navigate  = useNavigate();
   const location  = useLocation();
+  const { showToast } = useToast();
 
   const packageId: string = (location.state as any)?.packageId ?? 'premium';
   const pkg = PACKAGES[packageId] ?? PACKAGES.premium;
@@ -73,6 +75,29 @@ export default function CustomerBooking() {
   const [plate,   setPlate]   = useState('');
   const [vehicle, setVehicle] = useState('');
   const [notes,   setNotes]   = useState('');
+
+  const handleProceedToPayment = () => {
+    if (!date) {
+      showToast('Please select an appointment date to continue', 'error');
+      return;
+    }
+    if (!time) {
+      showToast('Please select an appointment time slot to continue', 'error');
+      return;
+    }
+
+    navigate('/dashboard/customer/checkout', {
+      state: {
+        packageId,
+        price: pkg.price,
+        date,
+        time,
+        plate,
+        vehicle,
+        notes,
+      },
+    });
+  };
 
   const displayDate = date
     ? new Date(date).toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
@@ -268,7 +293,7 @@ export default function CustomerBooking() {
             </div>
 
             {/* CTA */}
-            <Button variant="primary" fullWidth className="gap-2" onClick={() => {}}>
+            <Button variant="primary" fullWidth className="gap-2" onClick={handleProceedToPayment}>
               <CreditCard className="w-4 h-4" />
               Proceed to Payment
             </Button>
