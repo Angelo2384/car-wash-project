@@ -24,12 +24,12 @@ export default function DashboardLayout() {
   const navItems = [
     {
       name: "Dashboard",
-      path: "/dashboard",
+      path: "/dashboard/customer",
       icon: <LayoutDashboard className="w-4 h-4" />,
     },
     {
-      name: "My Bookings",
-      path: "#",
+      name: "My Appointments",
+      path: "/dashboard/customer/appointments",
       icon: <CalendarDays className="w-4 h-4" />,
     },
     {
