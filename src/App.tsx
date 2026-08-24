@@ -21,6 +21,7 @@ import CustomerCancel from './screens/dashboard/customer/CustomerCancel';
 import CustomerPackages from './screens/dashboard/customer/CustomerPackages';
 import CustomerBooking from './screens/dashboard/customer/CustomerBooking';
 import CustomerCustomPackage from './screens/dashboard/customer/CustomerCustomPackage';
+import CustomerCheckout from './screens/dashboard/customer/CustomerCheckout';
 import CustomerProfile from './screens/dashboard/customer/CustomerProfile';
 import StaffDashboard from './screens/dashboard/staff/StaffDashboard';
 import AdminDashboard from './screens/dashboard/admin/AdminDashboard';
@@ -56,6 +57,7 @@ export default function App() {
               <Route path="packages" element={<CustomerPackages />} />
               <Route path="booking" element={<CustomerBooking />} />
               <Route path="custom-package" element={<CustomerCustomPackage />} />
+              <Route path="checkout" element={<CustomerCheckout />} />
             </Route>
             <Route path="/dashboard/staff" element={<StaffDashboard />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />
