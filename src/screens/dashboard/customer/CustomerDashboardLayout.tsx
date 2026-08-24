@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -11,21 +11,46 @@ import {
   Crown,
   Sun,
   Moon,
+  LogOut,
 } from "lucide-react";
+import { signOut } from "firebase/auth";
+import { auth } from "../../../lib/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
 
 export default function DashboardLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const [theme, setTheme] = useState<"light" | "dark">("dark");
+
+  const handleLogout = async () => {
+    // Clear this user's uid-scoped localStorage data before signing out
+    // so the next account that signs in starts clean.
+    const uid = currentUser?.uid;
+    if (uid) {
+      localStorage.removeItem(`ww_profile_name_${uid}`);
+      localStorage.removeItem(`ww_profile_phone_${uid}`);
+      localStorage.removeItem(`ww_profile_avatar_${uid}`);
+    }
+    await signOut(auth);
+    navigate("/");
+  };
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));
   };
 
-  const displayName = currentUser?.displayName || "Alex Burns";
+  // Use uid-scoped localStorage keys (matching CustomerProfile) so each user
+  // sees only their own saved data. Firebase values take priority for name
+  // (kept in sync via updateProfile); localStorage leads for avatar (base64).
+  const uid = currentUser?.uid;
+  const displayName =
+    currentUser?.displayName ||
+    (uid ? localStorage.getItem(`ww_profile_name_${uid}`) : null) ||
+    "Alex Burns";
   const firstName = displayName.split(" ")[0] || "Alex";
   const photoURL =
+    (uid ? localStorage.getItem(`ww_profile_avatar_${uid}`) : null) ||
     currentUser?.photoURL ||
     "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150";
 
@@ -140,6 +165,17 @@ export default function DashboardLayout() {
                 }`}
               />
             </Link>
+
+            {/* Log Out */}
+            <button
+              onClick={handleLogout}
+              className="mt-1.5 w-full flex items-center gap-3.5 px-[16px] py-[11px] min-h-[46px] rounded-lg transition-all font-medium text-[14px] text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#F5F5F5]"
+            >
+              <div className="[&>svg]:w-[18px] [&>svg]:h-[18px]">
+                <LogOut className="w-4 h-4" />
+              </div>
+              Log Out
+            </button>
           </div>
         </aside>
 
