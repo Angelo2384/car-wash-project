@@ -18,6 +18,9 @@ import CustomerDashboard from './screens/dashboard/customer/CustomerDashboard';
 import CustomerAppointments from './screens/dashboard/customer/CustomerAppointments';
 import CustomerReschedule from './screens/dashboard/customer/CustomerReschedule';
 import CustomerCancel from './screens/dashboard/customer/CustomerCancel';
+import CustomerPackages from './screens/dashboard/customer/CustomerPackages';
+import CustomerBooking from './screens/dashboard/customer/CustomerBooking';
+import CustomerCustomPackage from './screens/dashboard/customer/CustomerCustomPackage';
 import StaffDashboard from './screens/dashboard/staff/StaffDashboard';
 import AdminDashboard from './screens/dashboard/admin/AdminDashboard';
 import { AuthProvider } from './contexts/AuthContext';
@@ -48,6 +51,9 @@ export default function App() {
               <Route path="appointments" element={<CustomerAppointments />} />
               <Route path="appointments/reschedule" element={<CustomerReschedule />} />
               <Route path="appointments/cancel" element={<CustomerCancel />} />
+              <Route path="packages" element={<CustomerPackages />} />
+              <Route path="booking" element={<CustomerBooking />} />
+              <Route path="custom-package" element={<CustomerCustomPackage />} />
             </Route>
             <Route path="/dashboard/staff" element={<StaffDashboard />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />

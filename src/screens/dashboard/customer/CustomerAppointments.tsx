@@ -31,7 +31,7 @@ export default function CustomerAppointments() {
             History
           </button>
         </div>
-        <Button variant="primary">
+        <Button variant="primary" onClick={() => navigate('/dashboard/customer/packages')}>
           + Book New Appointment
         </Button>
       </div>
