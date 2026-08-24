@@ -21,6 +21,7 @@ import CustomerCancel from './screens/dashboard/customer/CustomerCancel';
 import CustomerPackages from './screens/dashboard/customer/CustomerPackages';
 import CustomerBooking from './screens/dashboard/customer/CustomerBooking';
 import CustomerCustomPackage from './screens/dashboard/customer/CustomerCustomPackage';
+import CustomerProfile from './screens/dashboard/customer/CustomerProfile';
 import StaffDashboard from './screens/dashboard/staff/StaffDashboard';
 import AdminDashboard from './screens/dashboard/admin/AdminDashboard';
 import { AuthProvider } from './contexts/AuthContext';
@@ -48,6 +49,7 @@ export default function App() {
             </Route>
             <Route path="/dashboard/customer" element={<CustomerDashboardLayout />}>
               <Route index element={<CustomerDashboard />} />
+              <Route path="profile" element={<CustomerProfile />} />
               <Route path="appointments" element={<CustomerAppointments />} />
               <Route path="appointments/reschedule" element={<CustomerReschedule />} />
               <Route path="appointments/cancel" element={<CustomerCancel />} />

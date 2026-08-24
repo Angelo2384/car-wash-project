@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../../components/ui/Button';
 import { Lock, Calendar, Clock, MapPin, User, ChevronRight } from 'lucide-react';
@@ -8,25 +8,25 @@ export default function CustomerAppointments() {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'history'>('upcoming');
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-forwards text-[var(--color-charcoal)]">
+    <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-forwards text-[#F5F5F5]">
       {/* TopHeader/Title area */}
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-bold font-display tracking-tight text-[var(--color-burnt-orange)]">My Appointments</h2>
-        <p className="text-[var(--color-burnt-orange)] text-sm">Manage your upcoming bookings and requests</p>
+        <h2 className="text-2xl font-bold font-display tracking-tight text-[#F5F5F5]">My Appointments</h2>
+        <p className="text-[#A1A1AA] text-sm">Manage your upcoming bookings and requests</p>
       </div>
 
       {/* Tabs and Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--color-soft-gray)] pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#2C2C2C] pb-4">
         <div className="flex items-center gap-6">
           <button 
             onClick={() => setActiveTab('upcoming')}
-            className={`text-[var(--color-burnt-orange)] font-medium text-[15px] pb-4 -mb-[17px] transition-colors ${activeTab === 'upcoming' ? 'border-b-2 border-[var(--color-burnt-orange)]' : 'hover:opacity-80'}`}
+            className={`font-medium text-[15px] pb-4 -mb-[17px] transition-colors ${activeTab === 'upcoming' ? 'text-[#E86A33] border-b-2 border-[#E86A33]' : 'text-[#A1A1AA] hover:text-[#F5F5F5]'}`}
           >
             Upcoming Appointments
           </button>
           <button 
             onClick={() => setActiveTab('history')}
-            className={`text-[var(--color-burnt-orange)] font-medium text-[15px] pb-4 -mb-[17px] transition-colors ${activeTab === 'history' ? 'border-b-2 border-[var(--color-burnt-orange)]' : 'hover:opacity-80'}`}
+            className={`font-medium text-[15px] pb-4 -mb-[17px] transition-colors ${activeTab === 'history' ? 'text-[#E86A33] border-b-2 border-[#E86A33]' : 'text-[#A1A1AA] hover:text-[#F5F5F5]'}`}
           >
             History
           </button>
@@ -128,16 +128,16 @@ function AppointmentCard({
   
   const getBadgeStyles = (color: string) => {
     switch(color) {
-      case 'burnt-orange': return 'bg-[var(--color-burnt-orange)]/10 text-[var(--color-burnt-orange)] border-[var(--color-burnt-orange)]/20';
-      case 'reward-green': return 'bg-[var(--color-reward-green)]/10 text-[var(--color-reward-green)] border-[var(--color-reward-green)]/20';
+      case 'burnt-orange': return 'bg-[#E86A33]/15 text-[#E86A33] border-[#E86A33]/30';
+      case 'reward-green': return 'bg-[#35B86B]/15 text-[#35B86B] border-[#35B86B]/30';
       case 'red': return 'bg-red-500/10 text-red-500 border-red-500/20';
       case 'blue': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-      default: return 'bg-[var(--color-soft-gray)] text-[var(--color-charcoal)] border-[var(--color-charcoal-700)]';
+      default: return 'bg-[#1F1F1F] text-[#A1A1AA] border-[#2C2C2C]';
     }
   };
 
   return (
-    <div className="bg-[var(--color-off-white)] border border-[var(--color-soft-gray)] rounded-xl p-5 flex flex-col md:flex-row gap-6 transition-colors hover:border-[var(--color-charcoal-700)] shadow-sm">
+    <div className="bg-[#171717] border border-[#2C2C2C] rounded-xl p-5 flex flex-col md:flex-row gap-6 transition-colors hover:border-[#E86A33]/40 shadow-sm">
       
       {/* Column 1: Status & Time */}
       <div className="flex-1 flex flex-col gap-3">
@@ -147,16 +147,16 @@ function AppointmentCard({
           </span>
         </div>
         <div className="flex flex-col gap-1.5 mt-1">
-          <div className="flex items-center gap-2 text-[var(--color-charcoal)] font-medium">
-            <Calendar className="w-4 h-4 text-[var(--color-burnt-orange)]" />
+          <div className="flex items-center gap-2 text-[#F5F5F5] font-medium">
+            <Calendar className="w-4 h-4 text-[#E86A33]" />
             {date}
           </div>
-          <div className="flex items-center gap-2 text-[var(--color-charcoal-700)] text-sm">
-            <Clock className="w-4 h-4 text-[var(--color-burnt-orange)]" />
+          <div className="flex items-center gap-2 text-[#A1A1AA] text-sm">
+            <Clock className="w-4 h-4 text-[#E86A33]" />
             {time}
           </div>
-          <div className="flex items-center gap-2 text-[var(--color-charcoal-700)] text-sm">
-            <MapPin className="w-4 h-4 shrink-0 text-[var(--color-burnt-orange)]" />
+          <div className="flex items-center gap-2 text-[#A1A1AA] text-sm">
+            <MapPin className="w-4 h-4 shrink-0 text-[#E86A33]" />
             <span className="truncate">{location}</span>
           </div>
         </div>
@@ -165,44 +165,44 @@ function AppointmentCard({
       {/* Column 2: Vehicle & Package Inner Card */}
       <div className="flex-[1.5] flex flex-col gap-3">
         <div className="flex justify-between items-center">
-          <h3 className="font-semibold text-lg text-[var(--color-charcoal)]">{vehicle}</h3>
-          <span className="font-bold text-[var(--color-charcoal)]">{price}</span>
+          <h3 className="font-semibold text-lg text-[#F5F5F5]">{vehicle}</h3>
+          <span className="font-bold text-[#F5F5F5]">{price}</span>
         </div>
         
-        <div className="bg-white border border-[var(--color-soft-gray)] rounded-lg p-3 flex items-center justify-between">
+        <div className="bg-[#101010] border border-[#2C2C2C] rounded-lg p-3 flex items-center justify-between">
           <div className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-[var(--color-charcoal)]">{packageName}</span>
+            <span className="text-sm font-medium text-[#F5F5F5]">{packageName}</span>
             <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-[var(--color-off-white-dark)] flex items-center justify-center overflow-hidden border border-[var(--color-soft-gray)]">
-                <User className="w-3 h-3 text-[var(--color-burnt-orange)]" />
+              <div className="w-5 h-5 rounded-full bg-[#1F1F1F] flex items-center justify-center overflow-hidden border border-[#2C2C2C]">
+                <User className="w-3 h-3 text-[#E86A33]" />
               </div>
-              <span className="text-xs text-[var(--color-charcoal-700)]">{staffName} • {staffStatus}</span>
+              <span className="text-xs text-[#A1A1AA]">{staffName} • {staffStatus}</span>
             </div>
           </div>
-          <button className="text-[var(--color-charcoal-700)] hover:text-[var(--color-burnt-orange)] transition-colors">
+          <button className="text-[#71717A] hover:text-[#E86A33] transition-colors">
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
       </div>
 
       {/* Column 3: Actions & Policy */}
-      <div className="flex-1 flex flex-col justify-between gap-4 border-t md:border-t-0 md:border-l border-[var(--color-soft-gray)] pt-4 md:pt-0 md:pl-6">
-        <p className="text-xs text-[var(--color-charcoal-700)] leading-relaxed">
+      <div className="flex-1 flex flex-col justify-between gap-4 border-t md:border-t-0 md:border-l border-[#2C2C2C] pt-4 md:pt-0 md:pl-6">
+        <p className="text-xs text-[#A1A1AA] leading-relaxed">
           {cancellationPolicy || "Cancellation policies apply. Review our terms for details on refunds and fees."}
         </p>
         
         <div className="flex flex-col gap-2">
           {isMissed ? (
-            <Button variant="outline" fullWidth className="!text-[var(--color-charcoal)] !border-[var(--color-soft-gray)] hover:!border-[var(--color-charcoal-700)] hover:!text-[var(--color-charcoal)]">
+            <Button variant="outline" fullWidth className="!text-[#F5F5F5] !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33]">
               Request Refund
             </Button>
           ) : (
             <>
-              <Button variant="outline" fullWidth disabled={isLocked} onClick={onReschedule} className="!text-[var(--color-charcoal)] !border-[var(--color-soft-gray)] hover:!border-[var(--color-charcoal-700)] hover:!text-[var(--color-charcoal)] disabled:!border-[var(--color-soft-gray)] disabled:!text-[var(--color-charcoal-700)]">
+              <Button variant="outline" fullWidth disabled={isLocked} onClick={onReschedule} className="!text-[#F5F5F5] !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33] disabled:!border-[#2C2C2C] disabled:!text-[#71717A]">
                 {isLocked && <Lock className="w-3.5 h-3.5" />}
                 Reschedule
               </Button>
-              <Button variant="outline" fullWidth disabled={isLocked} onClick={onCancel} className="!text-[var(--color-charcoal)] !border-[var(--color-soft-gray)] hover:!border-[var(--color-charcoal-700)] hover:!text-[var(--color-charcoal)] disabled:!border-[var(--color-soft-gray)] disabled:!text-[var(--color-charcoal-700)]">
+              <Button variant="outline" fullWidth disabled={isLocked} onClick={onCancel} className="!text-[#F5F5F5] !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33] disabled:!border-[#2C2C2C] disabled:!text-[#71717A]">
                 {isLocked && <Lock className="w-3.5 h-3.5" />}
                 Cancel Booking
               </Button>
