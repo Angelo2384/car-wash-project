@@ -23,6 +23,8 @@ import CustomerBooking from './screens/dashboard/customer/CustomerBooking';
 import CustomerCustomPackage from './screens/dashboard/customer/CustomerCustomPackage';
 import CustomerCheckout from './screens/dashboard/customer/CustomerCheckout';
 import CustomerProfile from './screens/dashboard/customer/CustomerProfile';
+import CustomerContactUs from './screens/dashboard/customer/CustomerContactUs';
+import CustomerAboutUs from './screens/dashboard/customer/AboutUsScreen';
 import StaffDashboard from './screens/dashboard/staff/StaffDashboard';
 import AdminDashboard from './screens/dashboard/admin/AdminDashboard';
 import { AuthProvider } from './contexts/AuthContext';
@@ -58,6 +60,8 @@ export default function App() {
               <Route path="booking" element={<CustomerBooking />} />
               <Route path="custom-package" element={<CustomerCustomPackage />} />
               <Route path="checkout" element={<CustomerCheckout />} />
+              <Route path="contact" element={<CustomerContactUs />} />
+              <Route path="about-us" element={<CustomerAboutUs />} />
             </Route>
             <Route path="/dashboard/staff" element={<StaffDashboard />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />

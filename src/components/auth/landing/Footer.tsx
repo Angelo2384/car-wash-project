@@ -1,6 +1,10 @@
 import { useNavigate } from "react-router-dom";
 
-export default function Footer() {
+interface FooterProps {
+  hideAccount?: boolean;
+}
+
+export default function Footer({ hideAccount = false }: FooterProps) {
   const navigate = useNavigate();
 
   return (
@@ -24,34 +28,36 @@ export default function Footer() {
           <div className={styles.colSmall}>
             <h4 className={styles.columnTitle}>Platform</h4>
             <ul className={styles.linkList}>
-              <li><a href="#services" className={styles.link}>Services</a></li>
-              <li><a href="#membership" className={styles.link}>Membership</a></li>
-              <li><a href="#rewards" className={styles.link}>Rewards</a></li>
-              <li><a href="#how-it-works" className={styles.link}>How It Works</a></li>
+              <li><a href="/#services" className={styles.link}>Services</a></li>
+              <li><a href="/#membership" className={styles.link}>Membership</a></li>
+              <li><a href="/#rewards" className={styles.link}>Rewards</a></li>
+              <li><a href="/#how-it-works" className={styles.link}>How It Works</a></li>
             </ul>
           </div>
 
           <div className={styles.colSmall}>
             <h4 className={styles.columnTitle}>Company</h4>
             <ul className={styles.linkList}>
-              <li><a href="#" className={styles.link}>About Us</a></li>
+              <li><a href="/about" onClick={(e) => { e.preventDefault(); navigate('/about'); window.scrollTo(0, 0); }} className={styles.link}>About Us</a></li>
               <li><a href="#" className={styles.link}>Contact</a></li>
               <li><a href="#" className={styles.link}>Careers</a></li>
               <li><a href="#" className={styles.link}>Press</a></li>
             </ul>
           </div>
 
-          <div className={styles.colLarge}>
-            <h4 className={styles.columnTitle}>Account</h4>
-            <div className={styles.buttonGroup}>
-              <button className={styles.buttonSecondary} onClick={() => navigate('/auth/login')}>
-                Sign In
-              </button>
-              <button className={styles.buttonPrimary} onClick={() => navigate('/auth/signup')}>
-                Create Account
-              </button>
+          {!hideAccount && (
+            <div className={styles.colLarge}>
+              <h4 className={styles.columnTitle}>Account</h4>
+              <div className={styles.buttonGroup}>
+                <button className={styles.buttonSecondary} onClick={() => navigate('/auth/login')}>
+                  Sign In
+                </button>
+                <button className={styles.buttonPrimary} onClick={() => navigate('/auth/signup')}>
+                  Create Account
+                </button>
+              </div>
             </div>
-          </div>
+          )}
           
         </div>
         

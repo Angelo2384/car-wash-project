@@ -12,6 +12,8 @@ import {
   Sun,
   Moon,
   LogOut,
+  MessageSquare,
+  Info,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "../../../lib/firebase";
@@ -72,6 +74,8 @@ export default function DashboardLayout() {
     },
     { name: "Rewards", path: "#", icon: <Gift className="w-4 h-4" /> },
     { name: "Membership", path: "#", icon: <Star className="w-4 h-4" /> },
+    { name: "Contact Us", path: "/dashboard/customer/contact", icon: <MessageSquare className="w-4 h-4" /> },
+    { name: "About Us", path: "/dashboard/customer/about-us", icon: <Info className="w-4 h-4" /> },
   ];
 
   const isProfileActive = location.pathname === "/dashboard/customer/profile";
