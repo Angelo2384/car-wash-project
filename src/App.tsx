@@ -23,6 +23,8 @@ import CustomerBooking from './screens/dashboard/customer/CustomerBooking';
 import CustomerCustomPackage from './screens/dashboard/customer/CustomerCustomPackage';
 import CustomerCheckout from './screens/dashboard/customer/CustomerCheckout';
 import CustomerProfile from './screens/dashboard/customer/CustomerProfile';
+import CustomerContactUs from './screens/dashboard/customer/CustomerContactUs';
+import CustomerAboutUs from './screens/dashboard/customer/AboutUsScreen';
 import CustomerMembership from './screens/dashboard/customer/CustomerMembership';
 import CustomerRewards from './screens/dashboard/customer/CustomerRewards';
 import StaffDashboard from './screens/dashboard/staff/StaffDashboard';
@@ -60,6 +62,8 @@ export default function App() {
               <Route path="booking" element={<CustomerBooking />} />
               <Route path="custom-package" element={<CustomerCustomPackage />} />
               <Route path="checkout" element={<CustomerCheckout />} />
+              <Route path="contact" element={<CustomerContactUs />} />
+              <Route path="about-us" element={<CustomerAboutUs />} />
               <Route path="membership" element={<CustomerMembership />} />
               <Route path="rewards" element={<CustomerRewards />} />
             </Route>

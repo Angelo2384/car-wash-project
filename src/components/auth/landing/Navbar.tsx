@@ -1,11 +1,14 @@
 import React from "react";
 import { Menu, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false);
   const [activeSection, setActiveSection] = React.useState("home");
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isHome = location.pathname === "/";
 
   React.useEffect(() => {
     const observer = new IntersectionObserver(
@@ -40,11 +43,16 @@ export default function Navbar() {
   }, []);
 
   const getNavLinkClass = (section: string) => {
-    return `${styles.navLink} ${activeSection === section ? "text-burnt-orange font-bold" : "text-soft-gray"}`;
+    return `${styles.navLink} ${(isHome && activeSection === section) || (!isHome && section === 'about') ? "text-burnt-orange font-bold" : "text-soft-gray"}`;
   };
 
   const getMobileNavLinkClass = (section: string) => {
-    return `${styles.mobileNavLink} ${activeSection === section ? "text-burnt-orange font-bold" : "text-soft-gray"}`;
+    return `${styles.mobileNavLink} ${(isHome && activeSection === section) || (!isHome && section === 'about') ? "text-burnt-orange font-bold" : "text-soft-gray"}`;
+  };
+
+  const getHref = (section: string) => {
+    if (section === 'about') return '/about';
+    return isHome ? `#${section}` : `/#${section}`;
   };
 
   return (
@@ -61,19 +69,22 @@ export default function Navbar() {
 
           {/* Desktop Nav */}
           <div className={styles.desktopNavGroup}>
-            <a href="#home" className={getNavLinkClass("home")}>
+            <a href={getHref("home")} className={getNavLinkClass("home")}>
               Home
             </a>
-            <a href="#services" className={getNavLinkClass("services")}>
+            <a href={getHref("about")} onClick={(e) => { e.preventDefault(); navigate('/about'); }} className={getNavLinkClass("about")}>
+              About Us
+            </a>
+            <a href={getHref("services")} className={getNavLinkClass("services")}>
               Services
             </a>
-            <a href="#membership" className={getNavLinkClass("membership")}>
+            <a href={getHref("membership")} className={getNavLinkClass("membership")}>
               Membership
             </a>
-            <a href="#rewards" className={getNavLinkClass("rewards")}>
+            <a href={getHref("rewards")} className={getNavLinkClass("rewards")}>
               Rewards
             </a>
-            <a href="#how-it-works" className={getNavLinkClass("how-it-works")}>
+            <a href={getHref("how-it-works")} className={getNavLinkClass("how-it-works")}>
               How It Works
             </a>
           </div>
@@ -103,35 +114,42 @@ export default function Navbar() {
       {isOpen && (
         <div className={styles.mobileNavContainer}>
           <a
-            href="#home"
+            href={getHref("home")}
             onClick={() => setIsOpen(false)}
             className={getMobileNavLinkClass("home")}
           >
             Home
           </a>
           <a
-            href="#services"
+            href={getHref("about")}
+            onClick={(e) => { e.preventDefault(); setIsOpen(false); navigate('/about'); }}
+            className={getMobileNavLinkClass("about")}
+          >
+            About Us
+          </a>
+          <a
+            href={getHref("services")}
             onClick={() => setIsOpen(false)}
             className={getMobileNavLinkClass("services")}
           >
             Services
           </a>
           <a
-            href="#membership"
+            href={getHref("membership")}
             onClick={() => setIsOpen(false)}
             className={getMobileNavLinkClass("membership")}
           >
             Membership
           </a>
           <a
-            href="#rewards"
+            href={getHref("rewards")}
             onClick={() => setIsOpen(false)}
             className={getMobileNavLinkClass("rewards")}
           >
             Rewards
           </a>
           <a
-            href="#how-it-works"
+            href={getHref("how-it-works")}
             onClick={() => setIsOpen(false)}
             className={getMobileNavLinkClass("how-it-works")}
           >
