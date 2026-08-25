@@ -1,5 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { useAuth } from '../../../contexts/AuthContext';
+import { db } from '../../../lib/firebase';
+import { calculateCallOutFee } from '../../../lib/appointments';
 import { useToast } from '../../../contexts/ToastContext';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -15,6 +19,7 @@ import {
   ShieldCheck,
   Check,
   CreditCard,
+  MapPin,
 } from 'lucide-react';
 
 // ─── Package catalogue ────────────────────────────────────────────────────────
@@ -64,17 +69,43 @@ export default function CustomerBooking() {
   const navigate  = useNavigate();
   const location  = useLocation();
   const { showToast } = useToast();
+  const { currentUser } = useAuth();
+
+  const [hasMembership, setHasMembership] = useState<boolean>(() => {
+    if (!currentUser?.uid) return false;
+    const cached = localStorage.getItem(`ww_has_membership_${currentUser.uid}`);
+    return cached ? JSON.parse(cached) : false;
+  });
+
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    const unsub = onSnapshot(doc(db, "users", currentUser.uid), (snap) => {
+      if (snap.exists()) {
+        const mem = snap.data()?.hasMembership === true;
+        setHasMembership(mem);
+        localStorage.setItem(`ww_has_membership_${currentUser.uid}`, JSON.stringify(mem));
+      }
+    });
+    return () => unsub();
+  }, [currentUser?.uid]);
 
   const packageId: string = (location.state as any)?.packageId ?? 'premium';
   const pkg = PACKAGES[packageId] ?? PACKAGES.premium;
-  const vat   = pkg.price * VAT;
-  const total = pkg.price + vat;
+
+  const [serviceType, setServiceType] = useState<'Call-out' | 'Drive-in'>('Call-out');
+  const [streetAddress, setStreetAddress] = useState('123 Bree Street');
+  const [city, setCity] = useState('Cape Town');
 
   const [date,    setDate]    = useState('');
   const [time,    setTime]    = useState('');
   const [plate,   setPlate]   = useState('');
   const [vehicle, setVehicle] = useState('');
   const [notes,   setNotes]   = useState('');
+
+  const callOutFee = calculateCallOutFee(serviceType, hasMembership);
+  const subtotal = pkg.price + callOutFee;
+  const vat   = subtotal * VAT;
+  const total = subtotal + vat;
 
   const handleProceedToPayment = () => {
     if (!date) {
@@ -85,11 +116,18 @@ export default function CustomerBooking() {
       showToast('Please select an appointment time slot to continue', 'error');
       return;
     }
+    if (serviceType === 'Call-out' && !streetAddress.trim()) {
+      showToast('Please provide an address for the call-out service', 'error');
+      return;
+    }
 
     navigate('/dashboard/customer/checkout', {
       state: {
         packageId,
         price: pkg.price,
+        serviceType,
+        streetAddress: serviceType === 'Call-out' ? streetAddress : '',
+        city: serviceType === 'Call-out' ? city : '',
         date,
         time,
         plate,
@@ -191,6 +229,73 @@ export default function CustomerBooking() {
             </div>
           </SectionCard>
 
+          {/* Service Type (Call-out vs Drive-in) */}
+          <SectionCard title="Service Type">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setServiceType('Call-out')}
+                className={`flex flex-col gap-1.5 p-4 rounded-xl border text-left transition-all ${
+                  serviceType === 'Call-out'
+                    ? 'bg-[#E86A33]/10 border-[#E86A33] text-[#F5F5F5]'
+                    : 'bg-[#101010] border-[#2C2C2C] text-[#A1A1AA] hover:border-[#E86A33]/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-sm text-[#F5F5F5]">Call-out</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-[#E86A33]/20 text-[#E86A33] font-medium">Mobile Service</span>
+                </div>
+                <p className="text-xs text-[#A1A1AA] leading-relaxed">
+                  We come directly to your home or office address.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setServiceType('Drive-in')}
+                className={`flex flex-col gap-1.5 p-4 rounded-xl border text-left transition-all ${
+                  serviceType === 'Drive-in'
+                    ? 'bg-[#E86A33]/10 border-[#E86A33] text-[#F5F5F5]'
+                    : 'bg-[#101010] border-[#2C2C2C] text-[#A1A1AA] hover:border-[#E86A33]/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-sm text-[#F5F5F5]">Drive-in</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-[#35B86B]/20 text-[#35B86B] font-medium">Wash Bay</span>
+                </div>
+                <p className="text-xs text-[#A1A1AA] leading-relaxed">
+                  Bring your vehicle directly to our wash bay facility.
+                </p>
+              </button>
+            </div>
+
+            {serviceType === 'Call-out' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                <Input
+                  label="Street Address"
+                  placeholder="e.g. 123 Main Street"
+                  value={streetAddress}
+                  onChange={(e) => setStreetAddress(e.target.value)}
+                  icon={<MapPin className="w-5 h-5" />}
+                  className={inputCls}
+                  labelClassName={labelCls}
+                  iconClassName={iconCls}
+                  required
+                />
+                <Input
+                  label="City / Suburb"
+                  placeholder="e.g. Cape Town"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className={inputCls}
+                  labelClassName={labelCls}
+                  iconClassName={iconCls}
+                  required
+                />
+              </div>
+            )}
+          </SectionCard>
+
           {/* Vehicle details */}
           <SectionCard title="Vehicle Details">
             <div className="flex flex-col gap-4">
@@ -271,7 +376,9 @@ export default function CustomerBooking() {
 
             {/* Price breakdown */}
             <div className="flex flex-col gap-2.5">
-              <SummaryRow label="Subtotal" value={fmt(pkg.price)} />
+              <SummaryRow label="Package Price" value={fmt(pkg.price)} />
+              {callOutFee > 0 && <SummaryRow label="Call-out Fee" value={fmt(callOutFee)} />}
+              <SummaryRow label="Subtotal" value={fmt(subtotal)} />
               <SummaryRow label="VAT (15%)" value={fmt(vat)} />
               <div className="flex items-center justify-between pt-3 mt-1 border-t border-[#2C2C2C]">
                 <span className="font-bold text-[#F5F5F5]">Total</span>
