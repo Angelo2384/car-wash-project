@@ -32,6 +32,13 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
+import {
+  getRewardsSummary,
+  subscribeToRewards,
+  getTierProgress,
+  LOYALTY_TIERS,
+  type RewardsSummary,
+} from "../../../lib/rewards";
 
 // Interface Definitions
 interface Vehicle {
@@ -210,6 +217,18 @@ export default function CustomerProfile() {
     return () => unsub();
   }, [currentUser?.uid]);
 
+  // Live Rewards State (synchronized with Firestore and local cache)
+  const [rewardsSummary, setRewardsSummary] = useState<RewardsSummary>(() =>
+    getRewardsSummary(uid)
+  );
+
+  useEffect(() => {
+    const unsub = subscribeToRewards(uid, (data) => {
+      setRewardsSummary(data);
+    });
+    return () => unsub();
+  }, [uid]);
+
   // Vehicles State with local storage
   const [vehicles, setVehicles] = useState<Vehicle[]>(() => {
     const saved = localStorage.getItem("ww_vehicles");
@@ -311,7 +330,7 @@ export default function CustomerProfile() {
     }
 
     const newVeh: Vehicle = {
-      id: `veh-${Date.now()}`,
+      id: `veh-${vehicles.length + 1}-${vehiclePlate.toUpperCase().trim().replace(/[^A-Z0-9]/g, '')}`,
       plate: vehiclePlate.toUpperCase().trim(),
       make: vehicleMake.trim(),
       model: vehicleModel.trim(),
@@ -324,6 +343,11 @@ export default function CustomerProfile() {
     resetVehicleForm();
     showToast(`Vehicle ${newVeh.plate} added successfully!`, "success");
   };
+
+  // Dynamic Tier & Progress calculations for Profile Loyalty Card
+  const currentTierObj = LOYALTY_TIERS[rewardsSummary.currentTier] || LOYALTY_TIERS.Bronze;
+  const tierProgress = getTierProgress(rewardsSummary.lifetimePoints);
+  const nextTierObj = tierProgress.nextTier;
 
   // Edit Vehicle Open
   const openEditVehicleModal = (v: Vehicle) => {
@@ -550,52 +574,59 @@ export default function CustomerProfile() {
                 <Award className="w-4 h-4 text-[#35B86B]" />
                 Loyalty Points
               </span>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30">
-                Tier 3
+              <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${currentTierObj.badgeColor}`}>
+                {currentTierObj.name} (Tier {currentTierObj.level})
               </span>
             </div>
 
             <div className="mt-4">
               <div className="flex items-baseline gap-1.5">
                 <span className="text-4xl font-extrabold font-display text-[#F5F5F5] tracking-tight">
-                  2,450
+                  {rewardsSummary.pointsBalance.toLocaleString()}
                 </span>
                 <span className="text-xs text-[#35B86B] font-bold">PTS</span>
               </div>
-              <p className="text-xs text-[#A1A1AA] mt-1">Total Points Earned</p>
+              <p className="text-xs text-[#A1A1AA] mt-1">
+                Total Earned: <strong className="text-[#F5F5F5]">{rewardsSummary.lifetimePoints.toLocaleString()} PTS</strong>
+              </p>
             </div>
 
             {/* Next Tier Progress */}
             <div className="mt-6 bg-[#101010] p-3.5 rounded-xl border border-[#2C2C2C]">
               <div className="flex justify-between items-center text-xs mb-2">
                 <span className="font-semibold text-[#F5F5F5]">
-                  Next Tier: Ultimate
+                  {tierProgress.isHighestTier ? (
+                    'Maximum Tier Achieved'
+                  ) : (
+                    <>Next Tier: <span className="text-[#E86A33]">{nextTierObj?.name}</span></>
+                  )}
                 </span>
-                <span className="text-[#35B86B] font-medium">550 pts to go</span>
+                <span className="text-[#35B86B] font-medium">
+                  {tierProgress.isHighestTier
+                    ? 'All perks unlocked'
+                    : `${tierProgress.pointsToNext.toLocaleString()} pts to go`}
+                </span>
               </div>
               {/* Progress Bar */}
               <div className="w-full h-2.5 bg-[#1F1F1F] rounded-full overflow-hidden p-0.5 border border-[#2C2C2C]">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#35B86B] to-[#35B86B]/80 transition-all duration-500"
-                  style={{ width: "81%" }}
+                  className="h-full rounded-full bg-gradient-to-r from-[#E86A33] via-[#35B86B] to-[#35B86B] transition-all duration-500"
+                  style={{ width: `${tierProgress.progressPercent}%` }}
                 ></div>
               </div>
               <div className="flex justify-between items-center text-[10px] text-[#71717A] mt-1.5 font-medium">
-                <span>Diamond Elite (2,000)</span>
-                <span>Ultimate (3,000)</span>
+                <span>{currentTierObj.name} ({currentTierObj.minPoints.toLocaleString()} PTS)</span>
+                <span>
+                  {nextTierObj ? `${nextTierObj.name} (${nextTierObj.minPoints.toLocaleString()} PTS)` : 'Ultimate (3,000+ PTS)'}
+                </span>
               </div>
             </div>
           </div>
 
           <div className="mt-6 pt-3">
             <button
-              onClick={() => {
-                showToast(
-                  "Rewards redemption center is coming soon! You have 2,450 points ready.",
-                  "info"
-                );
-              }}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold bg-[#35B86B]/15 text-[#35B86B] hover:bg-[#35B86B]/25 border border-[#35B86B]/30 transition-all active:scale-[0.98]"
+              onClick={() => navigate('/dashboard/customer/rewards')}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold bg-[#35B86B]/15 text-[#35B86B] hover:bg-[#35B86B]/25 border border-[#35B86B]/30 transition-all active:scale-[0.98] cursor-pointer"
             >
               Redeem Rewards
               <ArrowRight className="w-4 h-4" />
