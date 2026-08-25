@@ -6,6 +6,11 @@ import { useToast } from '../../../contexts/ToastContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { saveAppointment, type StoredAppointment } from '../../../lib/appointments';
 import {
+  calculateBookingPoints,
+  awardBookingPoints,
+  getRewardsSummary,
+} from '../../../lib/rewards';
+import {
   ArrowLeft,
   CreditCard,
   Check,
@@ -98,10 +103,11 @@ export default function CustomerCheckout() {
     : 'Oct 26, 2026';
   const displayTime = bookingTime || '10:00 AM';
 
+  const userRewards = getRewardsSummary(currentUser?.uid);
   const subtotal = pkg.price;
   const vat = subtotal * VAT;
   const total = subtotal + vat;
-  const pointsEarned = Math.round(total * 2);
+  const pointsEarned = calculateBookingPoints(total, false, userRewards.currentTier);
 
   // Form State
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('card');
@@ -178,7 +184,7 @@ export default function CustomerCheckout() {
     setIsLoading(true);
 
     // Simulate payment processing delay
-    setTimeout(() => {
+    setTimeout(async () => {
       setIsLoading(false);
 
       // Create new appointment and save to localStorage
@@ -201,8 +207,11 @@ export default function CustomerCheckout() {
       };
 
       saveAppointment(newAppointment, currentUser?.uid);
+      
+      // Award reward points idempotently
+      await awardBookingPoints(currentUser?.uid, newAppointment.id, total, pkg.name);
 
-      showToast(`Payment of ${fmt(total)} confirmed! Your appointment has been booked.`, 'success');
+      showToast(`Payment of ${fmt(total)} confirmed! +${pointsEarned} reward points added.`, 'success');
       setIsSuccessModalOpen(true);
     }, 1200);
   };
