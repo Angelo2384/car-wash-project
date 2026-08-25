@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Crown,
@@ -9,12 +9,21 @@ import {
   ShieldCheck,
   ArrowRight,
   Check,
+  CreditCard,
+  Lock,
+  Mail,
+  User,
+  Calendar,
+  X,
+  Shield,
+  Zap,
 } from "lucide-react";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { Button } from "../../../components/ui/Button";
+import { Input } from "../../../components/ui/Input";
 
 export default function CustomerMembership() {
   const navigate = useNavigate();
@@ -32,6 +41,16 @@ export default function CustomerMembership() {
 
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Checkout Pop-up Modal State
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [cardHolder, setCardHolder] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+  const [isPaying, setIsPaying] = useState(false);
+  const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     if (!uid) return;
@@ -51,49 +70,133 @@ export default function CustomerMembership() {
     return () => unsub();
   }, [uid]);
 
-  const handleToggleMembership = async () => {
-    setIsProcessing(true);
-    const newStatus = !hasMembership;
+  // Open checkout modal with prefilled data
+  const handleOpenCheckout = () => {
+    setEmail(currentUser?.email || "qaasim@gmail.com");
+    setCardHolder(currentUser?.displayName || "Qaasim Isaacs");
+    setCardNumber("");
+    setCardExpiry("");
+    setCardCvv("");
+    setFormErrors({});
+    setIsCheckoutOpen(true);
+  };
 
+  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
+    const formatted = raw.match(/.{1,4}/g)?.join(' ') || raw;
+    setCardNumber(formatted);
+    if (formErrors.cardNumber) {
+      setFormErrors((prev) => ({ ...prev, cardNumber: "" }));
+    }
+  };
+
+  const handleExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let raw = e.target.value.replace(/\D/g, '').slice(0, 4);
+    if (raw.length >= 3) {
+      raw = `${raw.slice(0, 2)}/${raw.slice(2)}`;
+    }
+    setCardExpiry(raw);
+    if (formErrors.cardExpiry) {
+      setFormErrors((prev) => ({ ...prev, cardExpiry: "" }));
+    }
+  };
+
+  const handleCvvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 4);
+    setCardCvv(raw);
+    if (formErrors.cardCvv) {
+      setFormErrors((prev) => ({ ...prev, cardCvv: "" }));
+    }
+  };
+
+  // Submit payment & activate membership
+  const handleProcessPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errors: { [key: string]: string } = {};
+
+    if (!email.trim()) errors.email = "Email is required";
+    if (!cardHolder.trim()) errors.cardHolder = "Cardholder name is required";
+    if (!cardNumber.trim() || cardNumber.replace(/\s/g, '').length < 16) {
+      errors.cardNumber = "Valid 16-digit card number required";
+    }
+    if (!cardExpiry.trim() || cardExpiry.length < 5) {
+      errors.cardExpiry = "Expiry date required (MM/YY)";
+    }
+    if (!cardCvv.trim() || cardCvv.length < 3) {
+      errors.cardCvv = "Valid 3 or 4-digit CVV required";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
+    setIsPaying(true);
+
+    setTimeout(async () => {
+      try {
+        if (uid) {
+          await setDoc(
+            doc(db, "users", uid),
+            { hasMembership: true },
+            { merge: true }
+          );
+          localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(true));
+        }
+        setHasMembership(true);
+        window.dispatchEvent(new Event("ww_membership_changed"));
+        setIsPaying(false);
+        setIsCheckoutOpen(false);
+        showToast(
+          `Payment of ${billingCycle === "monthly" ? "R199.00" : "R1,899.00"} confirmed! Diamond Elite Membership is now active.`,
+          "success"
+        );
+      } catch (error) {
+        console.error("Failed to update membership in Firestore:", error);
+        setHasMembership(true);
+        if (uid) {
+          localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(true));
+        }
+        window.dispatchEvent(new Event("ww_membership_changed"));
+        setIsPaying(false);
+        setIsCheckoutOpen(false);
+        showToast("Diamond Elite Membership activated successfully!", "success");
+      }
+    }, 1000);
+  };
+
+  const handleCancelMembership = async () => {
+    setIsProcessing(true);
     try {
       if (uid) {
         await setDoc(
           doc(db, "users", uid),
-          { hasMembership: newStatus },
+          { hasMembership: false },
           { merge: true }
         );
-        localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(newStatus));
+        localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(false));
       }
-      setHasMembership(newStatus);
-
-      if (newStatus) {
-        showToast(
-          "Welcome to Diamond Elite Membership! All VIP perks and discounts are now active.",
-          "success"
-        );
-      } else {
-        showToast("Membership subscription cancelled. Reverted to Free Tier.", "info");
-      }
+      setHasMembership(false);
+      window.dispatchEvent(new Event("ww_membership_changed"));
+      showToast("Membership subscription cancelled. Reverted to Free Tier.", "info");
     } catch (error) {
-      console.error("Failed to update membership status:", error);
-      // Fallback local update
-      setHasMembership(newStatus);
+      console.error("Failed to cancel membership status:", error);
+      setHasMembership(false);
       if (uid) {
-        localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(newStatus));
+        localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(false));
       }
-      showToast(
-        newStatus
-          ? "Diamond Elite Membership activated!"
-          : "Membership reverted to Free Tier.",
-        "success"
-      );
+      window.dispatchEvent(new Event("ww_membership_changed"));
+      showToast("Membership reverted to Free Tier.", "info");
     } finally {
       setIsProcessing(false);
     }
   };
 
+  const priceFormatted = billingCycle === "monthly" ? "R199.00" : "R1,899.00";
+  const pricePeriod = billingCycle === "monthly" ? "/ month" : "/ year";
+
   return (
-    <div className="relative flex flex-col gap-10 pb-16 text-[#F5F5F5] animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-forwards overflow-hidden">
+    <div className="relative flex flex-col gap-10 pb-16 text-[#F5F5F5] animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-forwards">
       {/* ─── UNIQUE DARK GEOMETRIC BACKGROUND PATTERN ─── */}
       <div className="absolute inset-0 pointer-events-none -z-10 overflow-hidden">
         {/* Deep background color layer */}
@@ -207,7 +310,7 @@ export default function CustomerMembership() {
           Membership
         </h1>
         <p className="text-[#A1A1AA] text-sm md:text-[15px] max-w-2xl">
-          Enjoy unlimited zero-fee mobile call-outs, priority scheduling, exclusive discounts on all services, and double reward points.
+          Enjoy unlimited zero-fee mobile call-outs, priority scheduling, exclusive discounts on all services, and accelerated reward points.
         </p>
       </div>
 
@@ -253,23 +356,16 @@ export default function CustomerMembership() {
               </p>
             </div>
 
-            {/* Quick Feature Pills */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-              <div className="bg-[#101010]/90 border border-[#2C2C2C] rounded-xl p-3 flex flex-col items-center text-center gap-1">
-                <span className="text-lg font-bold font-display text-[#E86A33]">R0</span>
-                <span className="text-[11px] text-[#A1A1AA] font-medium leading-tight">Free House Calls</span>
-              </div>
-              <div className="bg-[#101010]/90 border border-[#2C2C2C] rounded-xl p-3 flex flex-col items-center text-center gap-1">
-                <span className="text-lg font-bold font-display text-[#E86A33]">20%</span>
-                <span className="text-[11px] text-[#A1A1AA] font-medium leading-tight">Off All Packages</span>
-              </div>
-              <div className="bg-[#101010]/90 border border-[#2C2C2C] rounded-xl p-3 flex flex-col items-center text-center gap-1">
-                <span className="text-lg font-bold font-display text-[#35B86B]">2X</span>
-                <span className="text-[11px] text-[#A1A1AA] font-medium leading-tight">Reward Points</span>
-              </div>
-              <div className="bg-[#101010]/90 border border-[#2C2C2C] rounded-xl p-3 flex flex-col items-center text-center gap-1">
-                <span className="text-lg font-bold font-display text-[#E86A33]">VIP</span>
-                <span className="text-[11px] text-[#A1A1AA] font-medium leading-tight">Priority Slots</span>
+            {/* Quick Feature Pill: Free House Calls */}
+            <div className="pt-1">
+              <div className="bg-[#101010]/90 border border-[#2C2C2C] rounded-xl px-4 py-3 flex items-center gap-3 w-fit">
+                <div className="w-9 h-9 rounded-lg bg-[#E86A33]/15 border border-[#E86A33]/30 flex items-center justify-center text-[#E86A33] font-bold">
+                  R0
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold font-display text-[#F5F5F5]">Free House Calls</span>
+                  <span className="text-xs text-[#A1A1AA]">Zero call-out fees to your doorstep</span>
+                </div>
               </div>
             </div>
 
@@ -277,7 +373,7 @@ export default function CustomerMembership() {
             <div className="pt-2 flex flex-wrap items-center gap-4">
               <Button
                 variant="primary"
-                onClick={handleToggleMembership}
+                onClick={hasMembership ? handleCancelMembership : handleOpenCheckout}
                 disabled={isProcessing}
                 className="py-3 px-7 text-sm font-semibold shadow-lg shadow-[#E86A33]/25"
               >
@@ -419,6 +515,10 @@ export default function CustomerMembership() {
                   <CheckCircle2 className="w-4 h-4 text-[#71717A] shrink-0" />
                   <span>Basic loyalty rewards</span>
                 </div>
+                <div className="flex items-center gap-3 text-[#D4D4D4]">
+                  <CheckCircle2 className="w-4 h-4 text-[#71717A] shrink-0" />
+                  <span>24-hour notice required to reschedule an appointment.</span>
+                </div>
               </div>
             </div>
 
@@ -428,7 +528,7 @@ export default function CustomerMembership() {
                 variant="outline"
                 fullWidth
                 disabled={!hasMembership}
-                onClick={hasMembership ? handleToggleMembership : undefined}
+                onClick={hasMembership ? handleCancelMembership : undefined}
                 className="py-3 text-xs sm:text-sm !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33] disabled:opacity-60 disabled:cursor-default"
               >
                 {!hasMembership ? "Your Current Plan" : "Downgrade to Free Tier"}
@@ -512,7 +612,12 @@ export default function CustomerMembership() {
 
                 <div className="flex items-center gap-3 text-[#F5F5F5] font-medium">
                   <CheckCircle2 className="w-4 h-4 text-[#E86A33] shrink-0" />
-                  <span>Accelerated rewards</span>
+                  <span>1.5x Accelerated loyalty rewards</span>
+                </div>
+
+                <div className="flex items-center gap-3 text-[#F5F5F5] font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-[#E86A33] shrink-0" />
+                  <span>Reschedule up to 1 hour before your appointment.</span>
                 </div>
               </div>
             </div>
@@ -523,7 +628,7 @@ export default function CustomerMembership() {
                 variant="primary"
                 fullWidth
                 disabled={isProcessing}
-                onClick={handleToggleMembership}
+                onClick={hasMembership ? handleCancelMembership : handleOpenCheckout}
                 className="py-3.5 text-sm sm:text-base font-bold shadow-xl shadow-[#E86A33]/30 flex items-center justify-center gap-2"
               >
                 <Crown className="w-4 h-4" />
@@ -563,6 +668,150 @@ export default function CustomerMembership() {
           <ArrowRight className="w-4 h-4" />
         </Button>
       </div>
+
+      {/* ─── CHECKOUT / PAYMENT POP-UP MODAL ─── */}
+      {isCheckoutOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-8 flex flex-col gap-6 overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Ambient Orange Top Border Line */}
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#FFA26B] to-[#E86A33]" />
+
+            {/* Header */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#E86A33]/15 border border-[#E86A33]/30 flex items-center justify-center text-[#E86A33]">
+                  <Crown className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
+                    Diamond Elite Membership
+                  </h3>
+                  <p className="text-xs text-[#A1A1AA]">
+                    {billingCycle === "monthly" ? "Monthly Subscription" : "Annual Subscription (Save 20%)"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCheckoutOpen(false)}
+                className="text-[#71717A] hover:text-[#F5F5F5] p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Price Badge Banner */}
+            <div className="bg-[#101010] border border-[#2C2C2C] rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <span className="text-xs text-[#71717A] block">Total Amount Due</span>
+                <div className="flex items-baseline gap-1 mt-0.5">
+                  <span className="text-2xl font-black font-display text-[#E86A33]">
+                    {priceFormatted}
+                  </span>
+                  <span className="text-xs text-[#A1A1AA]">{pricePeriod}</span>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Cancel Anytime
+              </span>
+            </div>
+
+            {/* Checkout Form */}
+            <form onSubmit={handleProcessPayment} className="flex flex-col gap-4">
+              {/* Email Address */}
+              <Input
+                label="Email Address *"
+                type="email"
+                placeholder="your.email@example.com"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (formErrors.email) setFormErrors((prev) => ({ ...prev, email: "" }));
+                }}
+                error={formErrors.email}
+                icon={<Mail className="w-4 h-4" />}
+              />
+
+              {/* Cardholder Name */}
+              <Input
+                label="Cardholder Name *"
+                placeholder="e.g. Qaasim Isaacs"
+                value={cardHolder}
+                onChange={(e) => {
+                  setCardHolder(e.target.value);
+                  if (formErrors.cardHolder) setFormErrors((prev) => ({ ...prev, cardHolder: "" }));
+                }}
+                error={formErrors.cardHolder}
+                icon={<User className="w-4 h-4" />}
+              />
+
+              {/* Card Number */}
+              <Input
+                label="Card Number *"
+                placeholder="4000 1234 5678 9010"
+                value={cardNumber}
+                onChange={handleCardNumberChange}
+                error={formErrors.cardNumber}
+                maxLength={19}
+                icon={<CreditCard className="w-4 h-4" />}
+              />
+
+              {/* Expiry and CVV Row */}
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Expiry Date (MM/YY) *"
+                  placeholder="12/28"
+                  value={cardExpiry}
+                  onChange={handleExpiryChange}
+                  error={formErrors.cardExpiry}
+                  maxLength={5}
+                  icon={<Calendar className="w-4 h-4" />}
+                />
+                <Input
+                  label="CVV / CVC *"
+                  type="password"
+                  placeholder="123"
+                  value={cardCvv}
+                  onChange={handleCvvChange}
+                  error={formErrors.cardCvv}
+                  maxLength={4}
+                  icon={<Lock className="w-4 h-4" />}
+                />
+              </div>
+
+              {/* Security note */}
+              <div className="flex items-center gap-2 text-[11px] text-[#71717A] pt-1">
+                <Lock className="w-3.5 h-3.5 text-[#35B86B] shrink-0" />
+                <span>256-bit encrypted checkout. No real charge will be made.</span>
+              </div>
+
+              {/* Submit Pay Now Button */}
+              <div className="flex items-center gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsCheckoutOpen(false)}
+                  disabled={isPaying}
+                  className="flex-1 py-3 text-xs sm:text-sm !border-[#2C2C2C] hover:!border-[#3C3C3C]"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  isLoading={isPaying}
+                  disabled={isPaying}
+                  className="flex-[2] py-3 text-xs sm:text-sm font-bold shadow-lg shadow-[#E86A33]/25 flex items-center justify-center gap-2"
+                >
+                  <Lock className="w-4 h-4" />
+                  Pay Now ({priceFormatted})
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

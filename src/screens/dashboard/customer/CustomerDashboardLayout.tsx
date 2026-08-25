@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -14,7 +14,8 @@ import {
   Info,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
-import { auth } from "../../../lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
+import { auth, db } from "../../../lib/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
 import ThemeToggle from "../../../components/ui/ThemeToggle";
@@ -32,8 +33,6 @@ export default function DashboardLayout() {
   const handleConfirmLogout = async () => {
     setIsLoggingOut(true);
     try {
-      // Clear this user's uid-scoped localStorage data before signing out
-      // so the next account that signs in starts clean.
       const uid = currentUser?.uid;
       if (uid) {
         localStorage.removeItem(`ww_profile_name_${uid}`);
@@ -54,6 +53,45 @@ export default function DashboardLayout() {
   // sees only their own saved data. Firebase values take priority for name
   // (kept in sync via updateProfile); localStorage leads for avatar (base64).
   const uid = currentUser?.uid;
+
+  const [hasMembership, setHasMembership] = useState<boolean>(() => {
+    if (!uid) return false;
+    const cached = localStorage.getItem(`ww_has_membership_${uid}`);
+    return cached ? JSON.parse(cached) : false;
+  });
+
+  useEffect(() => {
+    if (!uid) return;
+    const unsub = onSnapshot(
+      doc(db, "users", uid),
+      (snap) => {
+        if (snap.exists()) {
+          const mem = snap.data()?.hasMembership === true;
+          setHasMembership(mem);
+          localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(mem));
+        }
+      },
+      (err) => {
+        console.error("Failed to load user membership in layout:", err);
+      }
+    );
+
+    const handleMembershipChange = () => {
+      const cached = localStorage.getItem(`ww_has_membership_${uid}`);
+      if (cached) {
+        setHasMembership(JSON.parse(cached));
+      }
+    };
+
+    window.addEventListener("ww_membership_changed", handleMembershipChange);
+    window.addEventListener("storage", handleMembershipChange);
+
+    return () => {
+      unsub();
+      window.removeEventListener("ww_membership_changed", handleMembershipChange);
+      window.removeEventListener("storage", handleMembershipChange);
+    };
+  }, [uid]);
   const displayName =
     currentUser?.displayName ||
     (uid ? localStorage.getItem(`ww_profile_name_${uid}`) : null) ||
@@ -209,13 +247,23 @@ export default function DashboardLayout() {
             </div>
 
             <div className="flex items-center gap-6">
-              <button
-                onClick={() => navigate("/dashboard/customer/membership")}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-[#E86A33]/10 text-[#E86A33] hover:bg-[#E86A33]/20 transition-colors border border-[#E86A33]/20"
-              >
-                <Crown className="w-[14px] h-[14px]" />
-                Upgrade
-              </button>
+              {hasMembership ? (
+                <button
+                  onClick={() => navigate("/dashboard/customer/membership")}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30 hover:bg-[#35B86B]/25 transition-colors cursor-pointer"
+                >
+                  <Crown className="w-[14px] h-[14px] text-[#35B86B]" />
+                  Member
+                </button>
+              ) : (
+                <button
+                  onClick={() => navigate("/dashboard/customer/membership")}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-[#E86A33]/10 text-[#E86A33] hover:bg-[#E86A33]/20 transition-colors border border-[#E86A33]/20 cursor-pointer"
+                >
+                  <Crown className="w-[14px] h-[14px]" />
+                  Upgrade
+                </button>
+              )}
 
               <div className="h-5 w-px bg-[#2C2C2C]"></div>
 
