@@ -26,7 +26,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { updateProfile } from "firebase/auth";
-import { auth } from "../../../lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
+import { auth, db } from "../../../lib/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { Button } from "../../../components/ui/Button";
@@ -188,6 +189,26 @@ export default function CustomerProfile() {
       "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250"
     );
   });
+
+  const [hasMembership, setHasMembership] = useState<boolean>(() => {
+    if (!uid) return false;
+    const cached = localStorage.getItem(`ww_has_membership_${uid}`);
+    return cached ? JSON.parse(cached) : false;
+  });
+
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    const unsub = onSnapshot(doc(db, "users", currentUser.uid), (snap) => {
+      if (snap.exists()) {
+        const mem = snap.data()?.hasMembership === true;
+        setHasMembership(mem);
+        localStorage.setItem(`ww_has_membership_${currentUser.uid}`, JSON.stringify(mem));
+      }
+    }, (err) => {
+      console.error("Failed to load user profile doc:", err);
+    });
+    return () => unsub();
+  }, [currentUser?.uid]);
 
   // Vehicles State with local storage
   const [vehicles, setVehicles] = useState<Vehicle[]>(() => {
@@ -449,26 +470,40 @@ export default function CustomerProfile() {
 
               {/* Membership details */}
               <div className="flex flex-wrap items-center gap-4 mt-2 pt-3 border-t border-[#2C2C2C]/80">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
-                    Membership
-                  </p>
-                  <p className="text-sm font-semibold text-[#E86A33] flex items-center gap-1 mt-0.5">
-                    <Crown className="w-4 h-4" />
-                    Diamond Elite
-                  </p>
-                </div>
+                {hasMembership ? (
+                  <>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
+                        Membership
+                      </p>
+                      <p className="text-sm font-semibold text-[#E86A33] flex items-center gap-1 mt-0.5">
+                        <Crown className="w-4 h-4" />
+                        Diamond Elite
+                      </p>
+                    </div>
 
-                <div className="h-7 w-px bg-[#2C2C2C]"></div>
+                    <div className="h-7 w-px bg-[#2C2C2C]"></div>
 
-                <div>
-                  <p className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
-                    Member Since
-                  </p>
-                  <p className="text-sm font-medium text-[#F5F5F5] mt-0.5">
-                    March 2026
-                  </p>
-                </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
+                        Member Since
+                      </p>
+                      <p className="text-sm font-medium text-[#F5F5F5] mt-0.5">
+                        March 2026
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
+                      Membership
+                    </p>
+                    <p className="text-sm font-medium text-[#A1A1AA] flex items-center gap-1.5 mt-0.5">
+                      <ShieldCheck className="w-4 h-4 text-[#71717A]" />
+                      No active membership
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

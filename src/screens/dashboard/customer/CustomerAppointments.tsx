@@ -1,9 +1,81 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../../../contexts/AuthContext';
-import { getStoredAppointments, type StoredAppointment } from '../../../lib/appointments';
+import { db } from '../../../lib/firebase';
+import { getStoredAppointments, getDynamicAppointmentStatus, type StoredAppointment } from '../../../lib/appointments';
 import { Button } from '../../../components/ui/Button';
 import { Lock, Calendar, Clock, MapPin, User, ChevronRight } from 'lucide-react';
+
+const DEFAULT_MOCK_APPOINTMENTS: StoredAppointment[] = [
+  {
+    id: 'mock-appt-1',
+    status: 'Staff on route',
+    statusColor: 'blue',
+    date: 'Today, Oct 24',
+    time: '2:00 PM - 3:00 PM',
+    location: '123 Main St, Apartment Complex',
+    vehicle: 'Tesla Model 3',
+    price: 'R120.00',
+    packageName: 'Premium Detail',
+    staffName: 'Michael R.',
+    staffStatus: 'On Route - 15 mins away',
+    isLocked: true,
+    completed: false,
+    createdAt: Date.now() - 3600000,
+  },
+  {
+    id: 'mock-appt-2',
+    status: 'Scheduled',
+    statusColor: 'burnt-orange',
+    date: 'Tomorrow, Oct 25',
+    time: '10:00 AM - 11:30 AM',
+    location: '456 Oak Ave, Driveway',
+    vehicle: 'Ford F-150',
+    price: 'R150.00',
+    packageName: 'Exterior & Interior Deep Clean',
+    staffName: 'Sarah J.',
+    staffStatus: 'Assigned',
+    isLocked: false,
+    completed: false,
+    cancellationPolicy: 'Cancel before Oct 24, 10:00 AM for a full refund. 20% fee applies thereafter.',
+    createdAt: Date.now() - 7200000,
+  },
+  {
+    id: 'mock-appt-3',
+    status: 'Refund Eligible',
+    statusColor: 'reward-green',
+    date: 'Fri, Oct 27',
+    time: '1:00 PM - 2:00 PM',
+    location: '789 Pine Ln, Office Park',
+    vehicle: 'Honda Civic',
+    price: 'R85.00',
+    packageName: 'Standard Wash',
+    staffName: 'Pending Assignment',
+    staffStatus: 'Finding Staff...',
+    isLocked: false,
+    completed: false,
+    cancellationPolicy: 'Cancel before Oct 26, 1:00 PM for a full refund.',
+    createdAt: Date.now() - 10800000,
+  },
+  {
+    id: 'mock-appt-4',
+    status: 'Missed',
+    statusColor: 'red',
+    date: 'Mon, Oct 20',
+    time: '9:00 AM - 10:00 AM',
+    location: '123 Main St, Apartment Complex',
+    vehicle: 'Tesla Model 3',
+    price: 'R120.00',
+    packageName: 'Premium Detail',
+    staffName: 'Michael R.',
+    staffStatus: 'Was Assigned',
+    isLocked: true,
+    completed: false,
+    cancellationPolicy: 'You missed this appointment. Refund requests are subject to approval.',
+    createdAt: Date.now() - 86400000 * 5,
+  },
+];
 
 export default function CustomerAppointments() {
   const navigate = useNavigate();
@@ -13,9 +85,44 @@ export default function CustomerAppointments() {
     getStoredAppointments(currentUser?.uid)
   );
 
+  const [hasMembership, setHasMembership] = useState<boolean>(() => {
+    if (!currentUser?.uid) return false;
+    const cached = localStorage.getItem(`ww_has_membership_${currentUser.uid}`);
+    return cached ? JSON.parse(cached) : false;
+  });
+
   useEffect(() => {
     setStoredAppointments(getStoredAppointments(currentUser?.uid));
   }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    const unsub = onSnapshot(doc(db, "users", currentUser.uid), (snap) => {
+      if (snap.exists()) {
+        const mem = snap.data()?.hasMembership === true;
+        setHasMembership(mem);
+        localStorage.setItem(`ww_has_membership_${currentUser.uid}`, JSON.stringify(mem));
+      }
+    }, (err) => {
+      console.error("Failed to load user membership status", err);
+    });
+    return () => unsub();
+  }, [currentUser?.uid]);
+
+  const allAppointments = [
+    ...storedAppointments,
+    ...DEFAULT_MOCK_APPOINTMENTS.filter((mock) => !storedAppointments.some((s) => s.id === mock.id)),
+  ];
+
+  const upcomingAppointments = allAppointments.filter((appt) => {
+    const dyn = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership);
+    return dyn.status !== 'Missed' && dyn.status !== 'Completed';
+  });
+
+  const historyAppointments = allAppointments.filter((appt) => {
+    const dyn = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership);
+    return dyn.status === 'Missed' || dyn.status === 'Completed';
+  });
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-forwards text-[#F5F5F5]">
@@ -51,98 +158,88 @@ export default function CustomerAppointments() {
         
         {activeTab === 'upcoming' && (
           <>
-            {/* Real / Stored Appointments */}
-            {storedAppointments.map((appt) => (
-              <AppointmentCard
-                key={appt.id}
-                status={appt.status}
-                statusColor={appt.statusColor}
-                date={appt.date}
-                time={appt.time}
-                location={appt.location}
-                vehicle={appt.vehicle}
-                price={appt.price}
-                packageName={appt.packageName}
-                staffName={appt.staffName}
-                staffStatus={appt.staffStatus}
-                isLocked={appt.isLocked}
-                cancellationPolicy={appt.cancellationPolicy}
-                onReschedule={() => navigate('/dashboard/customer/appointments/reschedule')}
-                onCancel={() => navigate('/dashboard/customer/appointments/cancel')}
-              />
-            ))}
-
-            {/* Card 1: Staff on Route (locked) */}
-            <AppointmentCard 
-              status="Staff on route"
-              statusColor="blue"
-              date="Today, Oct 24"
-              time="2:00 PM - 3:00 PM"
-              location="123 Main St, Apartment Complex"
-              vehicle="Tesla Model 3"
-              price="R120.00"
-              packageName="Premium Detail"
-              staffName="Michael R."
-              staffStatus="On Route - 15 mins away"
-              isLocked={true}
-            />
-
-            {/* Card 2: Scheduled >24h (fee) */}
-            <AppointmentCard 
-              status="Scheduled"
-              statusColor="burnt-orange"
-              date="Tomorrow, Oct 25"
-              time="10:00 AM - 11:30 AM"
-              location="456 Oak Ave, Driveway"
-              vehicle="Ford F-150"
-              price="R150.00"
-              packageName="Exterior & Interior Deep Clean"
-              staffName="Sarah J."
-              staffStatus="Assigned"
-              isLocked={false}
-              cancellationPolicy="Cancel before Oct 24, 10:00 AM for a full refund. 20% fee applies thereafter."
-              onReschedule={() => navigate('/dashboard/customer/appointments/reschedule')}
-              onCancel={() => navigate('/dashboard/customer/appointments/cancel')}
-            />
-
-            {/* Card 3: Scheduled with full refund */}
-            <AppointmentCard 
-              status="Refund Eligible"
-              statusColor="reward-green"
-              date="Fri, Oct 27"
-              time="1:00 PM - 2:00 PM"
-              location="789 Pine Ln, Office Park"
-              vehicle="Honda Civic"
-              price="R85.00"
-              packageName="Standard Wash"
-              staffName="Pending Assignment"
-              staffStatus="Finding Staff..."
-              isLocked={false}
-              cancellationPolicy="Cancel before Oct 26, 1:00 PM for a full refund."
-              onReschedule={() => navigate('/dashboard/customer/appointments/reschedule')}
-              onCancel={() => navigate('/dashboard/customer/appointments/cancel')}
-            />
+            {upcomingAppointments.length > 0 ? (
+              upcomingAppointments.map((appt) => {
+                const dynamic = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership);
+                return (
+                  <AppointmentCard
+                    key={appt.id}
+                    date={appt.date}
+                    time={appt.time}
+                    location={appt.location}
+                    vehicle={appt.vehicle}
+                    price={appt.price}
+                    packageName={appt.packageName}
+                    staffName={appt.staffName}
+                    staffStatus={appt.staffStatus}
+                    completed={appt.completed}
+                    hasMembership={hasMembership}
+                    onReschedule={() => {
+                      navigate('/dashboard/customer/appointments/reschedule', {
+                        state: {
+                          appointment: {
+                            ...appt,
+                            status: dynamic.status,
+                            statusColor: dynamic.statusColor,
+                            isLocked: dynamic.isLocked,
+                            cancellationPolicy: dynamic.cancellationPolicy,
+                          },
+                        },
+                      });
+                    }}
+                    onCancel={() => navigate('/dashboard/customer/appointments/cancel')}
+                  />
+                );
+              })
+            ) : (
+              <div className="bg-[#171717] border border-[#2C2C2C] rounded-xl p-8 text-center text-[#A1A1AA]">
+                No upcoming appointments
+              </div>
+            )}
           </>
         )}
 
         {activeTab === 'history' && (
           <>
-            {/* Card 4: Missed */}
-            <AppointmentCard 
-              status="Missed"
-              statusColor="red"
-              date="Mon, Oct 20"
-              time="9:00 AM - 10:00 AM"
-              location="123 Main St, Apartment Complex"
-              vehicle="Tesla Model 3"
-              price="R120.00"
-              packageName="Premium Detail"
-              staffName="Michael R."
-              staffStatus="Was Assigned"
-              isLocked={true}
-              isMissed={true}
-              cancellationPolicy="You missed this appointment. Refund requests are subject to approval."
-            />
+            {historyAppointments.length > 0 ? (
+              historyAppointments.map((appt) => {
+                const dynamic = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership);
+                return (
+                  <AppointmentCard
+                    key={appt.id}
+                    date={appt.date}
+                    time={appt.time}
+                    location={appt.location}
+                    vehicle={appt.vehicle}
+                    price={appt.price}
+                    packageName={appt.packageName}
+                    staffName={appt.staffName}
+                    staffStatus={appt.staffStatus}
+                    isMissed={dynamic.status === 'Missed'}
+                    completed={appt.completed}
+                    hasMembership={hasMembership}
+                    onReschedule={() => {
+                      navigate('/dashboard/customer/appointments/reschedule', {
+                        state: {
+                          appointment: {
+                            ...appt,
+                            status: dynamic.status,
+                            statusColor: dynamic.statusColor,
+                            isLocked: dynamic.isLocked,
+                            cancellationPolicy: dynamic.cancellationPolicy,
+                          },
+                        },
+                      });
+                    }}
+                    onCancel={() => navigate('/dashboard/customer/appointments/cancel')}
+                  />
+                );
+              })
+            ) : (
+              <div className="bg-[#171717] border border-[#2C2C2C] rounded-xl p-8 text-center text-[#A1A1AA]">
+                No past appointment history
+              </div>
+            )}
           </>
         )}
 
@@ -153,9 +250,32 @@ export default function CustomerAppointments() {
 
 // Helper component for the Card to keep code clean
 function AppointmentCard({ 
-  status, statusColor, date, time, location, vehicle, price, 
-  packageName, staffName, staffStatus, isLocked, cancellationPolicy, isMissed, onReschedule, onCancel
+  date, 
+  time, 
+  location, 
+  vehicle, 
+  price, 
+  packageName, 
+  staffName, 
+  staffStatus, 
+  isMissed: propIsMissed, 
+  completed,
+  hasMembership,
+  onReschedule, 
+  onCancel 
 }: any) {
+  const dynamic = getDynamicAppointmentStatus(date, time, propIsMissed, completed, hasMembership);
+
+  const status = dynamic.status;
+  const statusColor = dynamic.statusColor;
+  const isLocked = dynamic.isLocked;
+  const isMissed = dynamic.isMissed;
+  const canReschedule = dynamic.canReschedule;
+  const isRescheduleDisabled = isLocked || !canReschedule;
+  const cancellationPolicy = dynamic.cancellationPolicy;
+  const computedStaffStatus = isLocked && status === 'Staff on route' && (!staffStatus || staffStatus === 'Assigned' || staffStatus === 'Finding Staff...')
+    ? 'On Route - 15 mins away'
+    : staffStatus;
   
   const getBadgeStyles = (color: string) => {
     switch(color) {
@@ -208,7 +328,7 @@ function AppointmentCard({
               <div className="w-5 h-5 rounded-full bg-[#1F1F1F] flex items-center justify-center overflow-hidden border border-[#2C2C2C]">
                 <User className="w-3 h-3 text-[#E86A33]" />
               </div>
-              <span className="text-xs text-[#A1A1AA]">{staffName} • {staffStatus}</span>
+              <span className="text-xs text-[#A1A1AA]">{staffName} • {computedStaffStatus}</span>
             </div>
           </div>
           <button className="text-[#71717A] hover:text-[#E86A33] transition-colors">
@@ -228,10 +348,14 @@ function AppointmentCard({
             <Button variant="outline" fullWidth className="!text-[#F5F5F5] !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33]">
               Request Refund
             </Button>
+          ) : status === 'Completed' ? (
+            <Button variant="outline" fullWidth onClick={onReschedule} className="!text-[#F5F5F5] !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33]">
+              Book Again
+            </Button>
           ) : (
             <>
-              <Button variant="outline" fullWidth disabled={isLocked} onClick={onReschedule} className="!text-[#F5F5F5] !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33] disabled:!border-[#2C2C2C] disabled:!text-[#71717A]">
-                {isLocked && <Lock className="w-3.5 h-3.5" />}
+              <Button variant="outline" fullWidth disabled={isRescheduleDisabled} onClick={onReschedule} className="!text-[#F5F5F5] !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33] disabled:!border-[#2C2C2C] disabled:!text-[#71717A]">
+                {isRescheduleDisabled && <Lock className="w-3.5 h-3.5" />}
                 Reschedule
               </Button>
               <Button variant="outline" fullWidth disabled={isLocked} onClick={onCancel} className="!text-[#F5F5F5] !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33] disabled:!border-[#2C2C2C] disabled:!text-[#71717A]">
@@ -246,3 +370,4 @@ function AppointmentCard({
     </div>
   );
 }
+
