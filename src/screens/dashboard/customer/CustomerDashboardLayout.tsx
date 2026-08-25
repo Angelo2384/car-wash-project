@@ -9,8 +9,6 @@ import {
   Settings,
   Bell,
   Crown,
-  Sun,
-  Moon,
   LogOut,
   MessageSquare,
   Info,
@@ -18,28 +16,38 @@ import {
 import { signOut } from "firebase/auth";
 import { auth } from "../../../lib/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useTheme } from "../../../contexts/ThemeContext";
+import ThemeToggle from "../../../components/ui/ThemeToggle";
+import LogoutConfirmationModal from "../../../components/ui/LogoutConfirmationModal";
 
 export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const { theme } = useTheme();
 
-  const handleLogout = async () => {
-    // Clear this user's uid-scoped localStorage data before signing out
-    // so the next account that signs in starts clean.
-    const uid = currentUser?.uid;
-    if (uid) {
-      localStorage.removeItem(`ww_profile_name_${uid}`);
-      localStorage.removeItem(`ww_profile_phone_${uid}`);
-      localStorage.removeItem(`ww_profile_avatar_${uid}`);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleConfirmLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      // Clear this user's uid-scoped localStorage data before signing out
+      // so the next account that signs in starts clean.
+      const uid = currentUser?.uid;
+      if (uid) {
+        localStorage.removeItem(`ww_profile_name_${uid}`);
+        localStorage.removeItem(`ww_profile_phone_${uid}`);
+        localStorage.removeItem(`ww_profile_avatar_${uid}`);
+      }
+      await signOut(auth);
+      navigate("/");
+    } catch (err) {
+      console.error("Logout failed:", err);
+    } finally {
+      setIsLoggingOut(false);
+      setIsLogoutModalOpen(false);
     }
-    await signOut(auth);
-    navigate("/");
-  };
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
   };
 
   // Use uid-scoped localStorage keys (matching CustomerProfile) so each user
@@ -85,7 +93,7 @@ export default function DashboardLayout() {
   const isProfileActive = location.pathname === "/dashboard/customer/profile";
 
   return (
-    <div className="dark">
+    <div className={theme}>
       <div className="min-h-screen bg-[#101010] font-sans flex text-[#F5F5F5] transition-colors duration-300 selection:bg-[#E86A33] selection:text-white relative">
         {/* Atmospheric Dark-Mode Effect */}
         <div
@@ -110,7 +118,7 @@ export default function DashboardLayout() {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-4 py-6 space-y-1.5">
+          <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
@@ -174,10 +182,10 @@ export default function DashboardLayout() {
               />
             </Link>
 
-            {/* Log Out */}
+            {/* Log Out Button */}
             <button
-              onClick={handleLogout}
-              className="mt-1.5 w-full flex items-center gap-3.5 px-[16px] py-[11px] min-h-[46px] rounded-lg transition-all font-medium text-[14px] text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#F5F5F5]"
+              onClick={() => setIsLogoutModalOpen(true)}
+              className="mt-1.5 w-full flex items-center gap-3.5 px-[16px] py-[11px] min-h-[46px] rounded-lg transition-all font-medium text-[14px] text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#F5F5F5] cursor-pointer"
             >
               <div className="[&>svg]:w-[18px] [&>svg]:h-[18px]">
                 <LogOut className="w-4 h-4" />
@@ -212,18 +220,8 @@ export default function DashboardLayout() {
               <div className="h-5 w-px bg-[#2C2C2C]"></div>
 
               <div className="flex items-center gap-5">
-                {/* Theme Toggle */}
-                <button
-                  onClick={toggleTheme}
-                  className="text-[#71717A] hover:text-[#F5F5F5] transition-colors"
-                  aria-label="Toggle Theme"
-                >
-                  {theme === "dark" ? (
-                    <Sun className="w-[18px] h-[18px]" />
-                  ) : (
-                    <Moon className="w-[18px] h-[18px]" />
-                  )}
-                </button>
+                {/* Global Theme Toggle */}
+                <ThemeToggle size={18} />
 
                 <button className="text-[#71717A] hover:text-[#F5F5F5] transition-colors relative">
                   <Bell className="w-[18px] h-[18px]" />
@@ -252,6 +250,14 @@ export default function DashboardLayout() {
           </div>
         </main>
       </div>
+
+      {/* Logout Confirmation Modal */}
+      <LogoutConfirmationModal
+        isOpen={isLogoutModalOpen}
+        onClose={() => setIsLogoutModalOpen(false)}
+        onConfirm={handleConfirmLogout}
+        isLoading={isLoggingOut}
+      />
     </div>
   );
 }

@@ -1,11 +1,17 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import ThemeToggle from '../../components/ui/ThemeToggle';
 
 export default function AuthLayout() {
   const location = useLocation();
 
   return (
     <div className="min-h-screen relative flex flex-col justify-center items-center p-4 sm:p-8 font-sans overflow-hidden bg-charcoal-900">
+      {/* Top right Theme Toggle */}
+      <div className="absolute top-6 right-6 z-20">
+        <ThemeToggle size={18} />
+      </div>
+
       {/* Background */}
       <div className="absolute inset-0 z-0">
         <img 

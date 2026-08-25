@@ -76,6 +76,16 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+interface BookingNavState {
+  packageId?: string;
+  price?: number;
+  date?: string;
+  time?: string;
+  plate?: string;
+  vehicle?: string;
+  notes?: string;
+}
+
 export default function CustomerCheckout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -83,7 +93,7 @@ export default function CustomerCheckout() {
   const { currentUser } = useAuth();
 
   // Read booking details from navigation state with safe fallbacks
-  const navState = (location.state as any) || {};
+  const navState = (location.state as BookingNavState | null) || {};
   const packageId: string = navState.packageId || 'premium';
   const pkg = PACKAGES[packageId] || {
     name: packageId === 'custom' ? 'Custom Package' : 'Premium Wash',

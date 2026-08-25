@@ -31,12 +31,14 @@ import StaffDashboard from './screens/dashboard/staff/StaffDashboard';
 import AdminDashboard from './screens/dashboard/admin/AdminDashboard';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <BrowserRouter>
+    <ThemeProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <BrowserRouter>
           <Routes>
             <Route path="/" element={
               <>
@@ -73,5 +75,6 @@ export default function App() {
         </BrowserRouter>
       </ToastProvider>
     </AuthProvider>
+  </ThemeProvider>
   );
 }
