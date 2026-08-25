@@ -149,7 +149,7 @@ export default function CustomerAppointments() {
           </button>
         </div>
         <Button variant="primary" onClick={() => navigate('/dashboard/customer/packages')}>
-          + Book New Appointment
+          Packages
         </Button>
       </div>
 
