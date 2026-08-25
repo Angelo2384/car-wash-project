@@ -10,9 +10,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ children, variant = 'primary', fullWidth, isLoading, className = '', ...props }, ref) => {
     const baseStyles = "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed";
     
-    const variants = {
+    const variants: Record<string, string> = {
       primary: "bg-burnt-orange hover:bg-burnt-orange-dark text-white shadow-lg shadow-burnt-orange/20",
-      secondary: "bg-charcoal-700 hover:bg-charcoal-600 text-white",
+      secondary: "bg-charcoal-700 hover:bg-charcoal-800 text-white",
       outline: "border-2 border-charcoal-700 hover:border-charcoal-600 text-white bg-transparent",
       ghost: "text-soft-gray hover:text-white hover:bg-charcoal-800",
     };
