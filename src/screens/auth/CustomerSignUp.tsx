@@ -62,6 +62,7 @@ export default function CustomerSignUp() {
         email,
         phoneNumber,
         role: 'customer',
+        hasMembership: false,
         createdAt: serverTimestamp(),
         lastLogin: serverTimestamp(),
       });
@@ -113,6 +114,7 @@ export default function CustomerSignUp() {
           phoneNumber: user.phoneNumber || '',
           photoURL: user.photoURL || '',
           role: 'customer',
+          hasMembership: false,
           createdAt: serverTimestamp(),
           lastLogin: serverTimestamp(),
         });
