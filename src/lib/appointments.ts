@@ -1,10 +1,15 @@
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from './firebase';
+
 export interface StoredAppointment {
   id: string;
   packageName: string;
   price: string;
   date: string;
   time: string;
-  location: string;
+  location?: string;
+  address?: string;
+  serviceType?: 'Call-out' | 'Drive-in' | string;
   vehicle: string;
   notes?: string;
   status: string;
@@ -13,8 +18,18 @@ export interface StoredAppointment {
   staffStatus: string;
   isLocked: boolean;
   cancellationPolicy?: string;
+  cancelReason?: string;
   createdAt: number;
   completed?: boolean;
+}
+
+export const CALL_OUT_FEE = 150;
+
+export function calculateCallOutFee(serviceType?: string, hasMembership: boolean = false): number {
+  if (serviceType === 'Call-out' && !hasMembership) {
+    return CALL_OUT_FEE;
+  }
+  return 0;
 }
 
 export function getAppointmentsStorageKey(uid?: string | null): string {
@@ -35,9 +50,19 @@ export function getStoredAppointments(uid?: string | null): StoredAppointment[] 
 export function saveAppointment(appointment: StoredAppointment, uid?: string | null): void {
   try {
     const current = getStoredAppointments(uid);
-    const updated = [appointment, ...current];
+    const updated = [appointment, ...current.filter((a) => a.id !== appointment.id)];
     const key = getAppointmentsStorageKey(uid);
     localStorage.setItem(key, JSON.stringify(updated));
+
+    if (uid) {
+      const apptRef = doc(db, 'users', uid, 'appointments', appointment.id);
+      setDoc(apptRef, {
+        ...appointment,
+        updatedAt: serverTimestamp(),
+      }, { merge: true }).catch((err) => {
+        console.error('Failed to sync appointment to Firestore:', err);
+      });
+    }
   } catch (e) {
     console.error('Failed to save appointment to localStorage', e);
   }
@@ -142,8 +167,20 @@ export function getDynamicAppointmentStatus(
   timeStr?: string,
   initialIsMissed?: boolean,
   completed?: boolean,
-  hasMembership: boolean = false
+  hasMembership: boolean = false,
+  initialStatus?: string
 ): DynamicStatusResult {
+  if (initialStatus === 'Cancelled') {
+    return {
+      status: 'Cancelled',
+      statusColor: 'red',
+      isLocked: true,
+      isMissed: false,
+      canReschedule: false,
+      cancellationPolicy: 'This appointment was cancelled.',
+    };
+  }
+
   const canReschedule = isRescheduleEligible(dateStr, timeStr, hasMembership, initialIsMissed, completed);
 
   if (completed) {
@@ -274,8 +311,53 @@ export function updateAppointment(id: string, updates: Partial<StoredAppointment
     }
     const key = getAppointmentsStorageKey(uid);
     localStorage.setItem(key, JSON.stringify(updated));
+
+    if (uid) {
+      const apptRef = doc(db, 'users', uid, 'appointments', id);
+      setDoc(apptRef, {
+        ...updates,
+        updatedAt: serverTimestamp(),
+      }, { merge: true }).catch((err) => {
+        console.error('Failed to sync appointment update to Firestore:', err);
+      });
+    }
   } catch (e) {
     console.error('Failed to update appointment in localStorage', e);
+  }
+}
+
+export async function cancelAppointment(id: string, reason: string, uid?: string | null): Promise<void> {
+  try {
+    const current = getStoredAppointments(uid);
+    const updated = current.map((appt) => {
+      if (appt.id === id) {
+        return {
+          ...appt,
+          status: 'Cancelled',
+          statusColor: 'red',
+          isLocked: true,
+          cancelReason: reason,
+          cancellationPolicy: `Appointment cancelled: "${reason}".`,
+        };
+      }
+      return appt;
+    });
+    const key = getAppointmentsStorageKey(uid);
+    localStorage.setItem(key, JSON.stringify(updated));
+
+    if (uid) {
+      const apptRef = doc(db, 'users', uid, 'appointments', id);
+      await setDoc(apptRef, {
+        status: 'Cancelled',
+        statusColor: 'red',
+        isLocked: true,
+        cancelReason: reason,
+        cancellationPolicy: `Appointment cancelled: "${reason}".`,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+  } catch (e) {
+    console.error('Failed to cancel appointment', e);
   }
 }
 
