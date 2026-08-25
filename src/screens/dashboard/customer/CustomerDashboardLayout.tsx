@@ -72,7 +72,11 @@ export default function DashboardLayout() {
       path: "/dashboard/customer/packages",
       icon: <History className="w-4 h-4" />,
     },
-    { name: "Rewards", path: "#", icon: <Gift className="w-4 h-4" /> },
+    {
+      name: "Rewards",
+      path: "/dashboard/customer/rewards",
+      icon: <Gift className="w-4 h-4" />,
+    },
     { name: "Membership", path: "/dashboard/customer/membership", icon: <Star className="w-4 h-4" /> },
     { name: "Contact Us", path: "/dashboard/customer/contact", icon: <MessageSquare className="w-4 h-4" /> },
     { name: "About Us", path: "/dashboard/customer/about-us", icon: <Info className="w-4 h-4" /> },
