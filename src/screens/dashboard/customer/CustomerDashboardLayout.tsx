@@ -66,12 +66,12 @@ export default function DashboardLayout() {
       icon: <CalendarDays className="w-4 h-4" />,
     },
     {
-      name: "Service History",
-      path: "#",
+      name: "Packages",
+      path: "/dashboard/customer/packages",
       icon: <History className="w-4 h-4" />,
     },
     { name: "Rewards", path: "#", icon: <Gift className="w-4 h-4" /> },
-    { name: "Membership", path: "#", icon: <Star className="w-4 h-4" /> },
+    { name: "Membership", path: "/dashboard/customer/membership", icon: <Star className="w-4 h-4" /> },
   ];
 
   const isProfileActive = location.pathname === "/dashboard/customer/profile";
@@ -193,7 +193,10 @@ export default function DashboardLayout() {
             </div>
 
             <div className="flex items-center gap-6">
-              <button className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-[#E86A33]/10 text-[#E86A33] hover:bg-[#E86A33]/20 transition-colors border border-[#E86A33]/20">
+              <button
+                onClick={() => navigate("/dashboard/customer/membership")}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-[#E86A33]/10 text-[#E86A33] hover:bg-[#E86A33]/20 transition-colors border border-[#E86A33]/20"
+              >
                 <Crown className="w-[14px] h-[14px]" />
                 Upgrade
               </button>

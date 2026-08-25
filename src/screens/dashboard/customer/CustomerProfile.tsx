@@ -494,14 +494,22 @@ export default function CustomerProfile() {
                     </div>
                   </>
                 ) : (
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
-                      Membership
-                    </p>
-                    <p className="text-sm font-medium text-[#A1A1AA] flex items-center gap-1.5 mt-0.5">
-                      <ShieldCheck className="w-4 h-4 text-[#71717A]" />
-                      No active membership
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
+                        Membership
+                      </p>
+                      <p className="text-sm font-medium text-[#A1A1AA] flex items-center gap-1.5 mt-0.5">
+                        <ShieldCheck className="w-4 h-4 text-[#71717A]" />
+                        No active membership
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate("/dashboard/customer/membership")}
+                      className="ml-2 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#E86A33]/15 text-[#E86A33] hover:bg-[#E86A33]/25 border border-[#E86A33]/30 transition-colors"
+                    >
+                      Upgrade
+                    </button>
                   </div>
                 )}
               </div>
