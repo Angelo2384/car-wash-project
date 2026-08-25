@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../lib/firebase';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { useToast } from '../../../contexts/ToastContext';
 import { useAuth } from '../../../contexts/AuthContext';
-import { saveAppointment, type StoredAppointment } from '../../../lib/appointments';
+import { saveAppointment, calculateCallOutFee, type StoredAppointment } from '../../../lib/appointments';
 import {
   calculateBookingPoints,
   awardBookingPoints,
@@ -97,6 +99,25 @@ export default function CustomerCheckout() {
   const bookingPlate: string = navState.plate || '';
   const bookingVehicle: string = navState.vehicle || '';
   const bookingNotes: string = navState.notes || '';
+  const serviceType: string = navState.serviceType || 'Call-out';
+
+  const [hasMembership, setHasMembership] = useState<boolean>(() => {
+    if (!currentUser?.uid) return false;
+    const cached = localStorage.getItem(`ww_has_membership_${currentUser.uid}`);
+    return cached ? JSON.parse(cached) : false;
+  });
+
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    const unsub = onSnapshot(doc(db, "users", currentUser.uid), (snap) => {
+      if (snap.exists()) {
+        const mem = snap.data()?.hasMembership === true;
+        setHasMembership(mem);
+        localStorage.setItem(`ww_has_membership_${currentUser.uid}`, JSON.stringify(mem));
+      }
+    });
+    return () => unsub();
+  }, [currentUser?.uid]);
 
   const displayDate = bookingDate
     ? new Date(bookingDate).toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
@@ -104,7 +125,8 @@ export default function CustomerCheckout() {
   const displayTime = bookingTime || '10:00 AM';
 
   const userRewards = getRewardsSummary(currentUser?.uid);
-  const subtotal = pkg.price;
+  const callOutFee = calculateCallOutFee(serviceType, hasMembership);
+  const subtotal = pkg.price + callOutFee;
   const vat = subtotal * VAT;
   const total = subtotal + vat;
   const pointsEarned = calculateBookingPoints(total, false, userRewards.currentTier);
@@ -116,8 +138,8 @@ export default function CustomerCheckout() {
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
 
-  const [streetAddress, setStreetAddress] = useState('123 Bree Street');
-  const [city, setCity] = useState('Cape Town');
+  const [streetAddress, setStreetAddress] = useState(navState.streetAddress || '123 Bree Street');
+  const [city, setCity] = useState(navState.city || 'Cape Town');
   const [postalCode, setPostalCode] = useState('8001');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -164,9 +186,11 @@ export default function CustomerCheckout() {
       if (!cardCvv || cardCvv.length < 3) {
         newErrors.cardCvv = 'Valid 3 or 4 digit CVV required';
       }
-      if (!streetAddress.trim()) newErrors.streetAddress = 'Street address is required';
-      if (!city.trim()) newErrors.city = 'City is required';
-      if (!postalCode.trim()) newErrors.postalCode = 'Postal code is required';
+      if (serviceType === 'Call-out') {
+        if (!streetAddress.trim()) newErrors.streetAddress = 'Street address is required';
+        if (!city.trim()) newErrors.city = 'City is required';
+        if (!postalCode.trim()) newErrors.postalCode = 'Postal code is required';
+      }
     }
 
     setErrors(newErrors);
@@ -187,14 +211,18 @@ export default function CustomerCheckout() {
     setTimeout(async () => {
       setIsLoading(false);
 
-      // Create new appointment and save to localStorage
+      const formattedAddress = serviceType === 'Call-out' ? (streetAddress ? `${streetAddress}, ${city}` : '123 Main St, Apartment Complex') : '';
+
+      // Create new appointment and save to localStorage / Firestore
       const newAppointment: StoredAppointment = {
         id: `WW-${Math.floor(100000 + Math.random() * 900000)}`,
         packageName: pkg.name,
         price: fmt(total),
         date: displayDate,
         time: displayTime,
-        location: streetAddress ? `${streetAddress}, ${city}` : '123 Main St, Apartment Complex',
+        serviceType,
+        address: formattedAddress,
+        location: formattedAddress,
         vehicle: bookingVehicle ? `${bookingVehicle}${bookingPlate ? ` (${bookingPlate})` : ''}` : 'Tesla Model 3',
         notes: bookingNotes,
         status: 'Waiting Confirmation',
@@ -479,6 +507,8 @@ export default function CustomerCheckout() {
 
             {/* Price breakdown */}
             <div className="flex flex-col gap-2.5">
+              <SummaryRow label="Package Price" value={fmt(pkg.price)} />
+              {callOutFee > 0 && <SummaryRow label="Call-out Fee" value={fmt(callOutFee)} />}
               <SummaryRow label="Subtotal" value={fmt(subtotal)} />
               <SummaryRow label="VAT (15%)" value={fmt(vat)} />
               <div className="flex items-center justify-between pt-3 mt-1 border-t border-[#2C2C2C]">
