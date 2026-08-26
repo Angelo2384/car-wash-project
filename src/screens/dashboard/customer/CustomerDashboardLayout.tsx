@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -12,6 +12,9 @@ import {
   LogOut,
   MessageSquare,
   Info,
+  CalendarCheck,
+  Clock,
+  CheckCircle2,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -20,11 +23,126 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
 import ThemeToggle from "../../../components/ui/ThemeToggle";
 import LogoutConfirmationModal from "../../../components/ui/LogoutConfirmationModal";
+import { useNotifications, type AppNotification } from "../../../contexts/NotificationsContext";
+
+// ─── Bell Dropdown ────────────────────────────────────────────────────────────
+
+function NotifPreviewIcon({ type, color, bg }: { type: AppNotification["icon"]; color: string; bg: string }) {
+  const Icon =
+    type === "calendar" ? CalendarCheck :
+    type === "clock" ? Clock :
+    type === "star" ? Star :
+    type === "crown" ? Crown :
+    type === "gift" ? Gift :
+    CheckCircle2;
+  return (
+    <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center shrink-0`}>
+      <Icon className={`w-4 h-4 ${color}`} />
+    </div>
+  );
+}
+
+function BellDropdown({ onViewAll }: { onViewAll: () => void }) {
+  const { notifications, unreadCount, markRead } = useNotifications();
+  // Show up to 5: unread first, then read
+  const preview = [
+    ...notifications.filter((n) => !n.isRead),
+    ...notifications.filter((n) => n.isRead),
+  ].slice(0, 5);
+
+  return (
+    <div className="absolute right-0 top-[calc(100%+10px)] w-[360px] bg-[#1A1A1A] border border-[#2C2C2C] rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#2C2C2C]">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-semibold text-white">Notifications</span>
+          {unreadCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-[#E86A33] text-white text-[10px] font-bold">
+              {unreadCount}
+            </span>
+          )}
+        </div>
+        {unreadCount > 0 && (
+          <button
+            onClick={() => markRead(notifications.filter((n) => !n.isRead).map((n) => n.id))}
+            className="text-[11px] text-[#E86A33] font-medium hover:text-[#FF8055] transition-colors"
+          >
+            Mark all read
+          </button>
+        )}
+      </div>
+
+      {/* List */}
+      <div className="max-h-[340px] overflow-y-auto">
+        {preview.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10">
+            <Bell className="w-8 h-8 text-[#3A3A3A] mb-2" />
+            <p className="text-[12px] text-[#52525B]">You're all caught up!</p>
+          </div>
+        ) : (
+          preview.map((notif) => (
+            <button
+              key={notif.id}
+              onClick={() => { if (!notif.isRead) markRead([notif.id]); }}
+              className={`w-full flex items-start gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors text-left border-b border-[#232323] last:border-0 relative ${
+                !notif.isRead ? "bg-[#1E1E1E]" : ""
+              }`}
+            >
+              {!notif.isRead && (
+                <div className="absolute left-0 top-2 bottom-2 w-[2.5px] bg-[#E86A33] rounded-full" />
+              )}
+              <NotifPreviewIcon type={notif.icon} color={notif.iconColor} bg={notif.iconBg} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className={`text-[12px] font-semibold truncate ${notif.isRead ? "text-[#E5E5E5]" : "text-white"}`}>
+                    {notif.title}
+                  </span>
+                  {!notif.isRead && <span className="w-1.5 h-1.5 rounded-full bg-[#E86A33] shrink-0" />}
+                </div>
+                <p className="text-[11px] text-[#71717A] leading-relaxed line-clamp-2">{notif.message}</p>
+                <p className="text-[10px] text-[#52525B] mt-1">{notif.time}</p>
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="px-4 py-2.5 border-t border-[#2C2C2C]">
+        <button
+          onClick={onViewAll}
+          className="w-full text-center text-[12px] font-semibold text-[#E86A33] hover:text-[#FF8055] transition-colors py-1"
+        >
+          View all notifications →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const { unreadCount } = useNotifications();
+
+  // Bell dropdown state
+  const [bellOpen, setBellOpen] = useState(false);
+  const bellRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!bellOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) {
+        setBellOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [bellOpen]);
   const { theme } = useTheme();
 
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
@@ -112,6 +230,11 @@ export default function DashboardLayout() {
       name: "My Appointments",
       path: "/dashboard/customer/appointments",
       icon: <CalendarDays className="w-4 h-4" />,
+    },
+    {
+      name: "Notifications",
+      path: "/dashboard/customer/notifications",
+      icon: <Bell className="w-4 h-4" />,
     },
     {
       name: "Packages",
@@ -272,18 +395,38 @@ export default function DashboardLayout() {
 
               <div className="h-5 w-px bg-[#2C2C2C]"></div>
 
-              <div className="flex items-center gap-5">
+              <div className="flex items-center gap-3">
                 {/* Global Theme Toggle */}
                 <ThemeToggle size={18} />
 
-                <button className="text-[#71717A] hover:text-[#F5F5F5] transition-colors relative">
-                  <Bell className="w-[18px] h-[18px]" />
-                  <span className="absolute -top-0.5 -right-0.5 w-[6px] h-[6px] bg-[#E86A33] rounded-full"></span>
-                </button>
+                {/* Bell: opens quick-preview dropdown */}
+                <div ref={bellRef} className="relative flex items-center justify-center">
+                  <button
+                    onClick={() => setBellOpen((o) => !o)}
+                    className="p-2 rounded-xl text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.06] transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#E86A33]/50 active:scale-95 relative flex items-center justify-center"
+                    aria-label="Notifications"
+                    title="Notifications"
+                  >
+                    <div className="relative w-5 h-5 flex items-center justify-center">
+                      <Bell className="w-[18px] h-[18px]" />
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#E86A33] rounded-full ring-2 ring-[#101010]" />
+                      )}
+                    </div>
+                  </button>
+                  {bellOpen && (
+                    <BellDropdown
+                      onViewAll={() => {
+                        setBellOpen(false);
+                        navigate("/dashboard/customer/notifications");
+                      }}
+                    />
+                  )}
+                </div>
 
                 <Link
                   to="/dashboard/customer/profile"
-                  className="w-8 h-8 rounded-full bg-[#1F1F1F] overflow-hidden border border-[#2C2C2C] hover:border-[#E86A33] transition-colors"
+                  className="w-8 h-8 rounded-full bg-[#1F1F1F] overflow-hidden border border-[#2C2C2C] hover:border-[#E86A33] transition-colors shrink-0 flex items-center justify-center ml-1"
                 >
                   <img
                     src={photoURL}

@@ -28,11 +28,13 @@ import CustomerAboutUs from './screens/dashboard/customer/AboutUsScreen';
 import CustomerMembership from './screens/dashboard/customer/CustomerMembership';
 import CustomerRewards from './screens/dashboard/customer/CustomerRewards';
 import CustomerReviews from './screens/dashboard/customer/CustomerReviews';
+import CustomerNotifications from './screens/dashboard/customer/CustomerNotifications';
 import StaffDashboard from './screens/dashboard/staff/StaffDashboard';
 import AdminDashboard from './screens/dashboard/admin/AdminDashboard';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { NotificationsProvider } from './contexts/NotificationsContext';
 
 export default function App() {
   return (
@@ -55,7 +57,11 @@ export default function App() {
               <Route path="forgot-password" element={<ForgotPassword />} />
               <Route path="verify-email" element={<VerifyEmail />} />
             </Route>
-            <Route path="/dashboard/customer" element={<CustomerDashboardLayout />}>
+            <Route path="/dashboard/customer" element={
+              <NotificationsProvider>
+                <CustomerDashboardLayout />
+              </NotificationsProvider>
+            }>
               <Route index element={<CustomerDashboard />} />
               <Route path="profile" element={<CustomerProfile />} />
               <Route path="appointments" element={<CustomerAppointments />} />
@@ -70,6 +76,7 @@ export default function App() {
               <Route path="membership" element={<CustomerMembership />} />
               <Route path="rewards" element={<CustomerRewards />} />
               <Route path="reviews" element={<CustomerReviews />} />
+              <Route path="notifications" element={<CustomerNotifications />} />
             </Route>
             <Route path="/dashboard/staff" element={<StaffDashboard />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />
