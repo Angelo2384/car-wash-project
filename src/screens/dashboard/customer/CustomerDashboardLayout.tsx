@@ -42,13 +42,22 @@ function NotifPreviewIcon({ type, color, bg }: { type: AppNotification["icon"]; 
   );
 }
 
-function BellDropdown({ onViewAll }: { onViewAll: () => void }) {
+function BellDropdown({ onViewAll, onClose }: { onViewAll: () => void; onClose: () => void }) {
+  const navigate = useNavigate();
   const { notifications, unreadCount, markRead } = useNotifications();
   // Show up to 5: unread first, then read
   const preview = [
     ...notifications.filter((n) => !n.isRead),
     ...notifications.filter((n) => n.isRead),
   ].slice(0, 5);
+
+  const handleClickItem = (notif: AppNotification) => {
+    if (!notif.isRead) markRead([notif.id]);
+    onClose();
+    if (notif.link) {
+      navigate(notif.link);
+    }
+  };
 
   return (
     <div className="absolute right-0 top-[calc(100%+10px)] w-[360px] bg-[#1A1A1A] border border-[#2C2C2C] rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
@@ -75,15 +84,20 @@ function BellDropdown({ onViewAll }: { onViewAll: () => void }) {
       {/* List */}
       <div className="max-h-[340px] overflow-y-auto">
         {preview.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10">
-            <Bell className="w-8 h-8 text-[#3A3A3A] mb-2" />
-            <p className="text-[12px] text-[#52525B]">You're all caught up!</p>
+          <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
+            <div className="w-10 h-10 rounded-full bg-[#222] border border-[#2C2C2C] flex items-center justify-center mb-2.5">
+              <Bell className="w-4 h-4 text-[#71717A]" />
+            </div>
+            <p className="text-[13px] font-semibold text-[#F5F5F5] mb-1">No notifications yet</p>
+            <p className="text-[11px] text-[#71717A] leading-relaxed">
+              You're all caught up. Notifications about your appointments, rewards, and updates will appear here.
+            </p>
           </div>
         ) : (
           preview.map((notif) => (
             <button
               key={notif.id}
-              onClick={() => { if (!notif.isRead) markRead([notif.id]); }}
+              onClick={() => handleClickItem(notif)}
               className={`w-full flex items-start gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors text-left border-b border-[#232323] last:border-0 relative ${
                 !notif.isRead ? "bg-[#1E1E1E]" : ""
               }`}
@@ -416,6 +430,7 @@ export default function DashboardLayout() {
                   </button>
                   {bellOpen && (
                     <BellDropdown
+                      onClose={() => setBellOpen(false)}
                       onViewAll={() => {
                         setBellOpen(false);
                         navigate("/dashboard/customer/notifications");

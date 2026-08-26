@@ -20,6 +20,7 @@ import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
+import { useNotifications } from "../../../contexts/NotificationsContext";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 
@@ -27,6 +28,7 @@ export default function CustomerMembership() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { showToast } = useToast();
+  const { addNotification } = useNotifications();
 
   const uid = currentUser?.uid;
 
@@ -145,8 +147,29 @@ export default function CustomerMembership() {
         window.dispatchEvent(new Event("ww_membership_changed"));
         setIsPaying(false);
         setIsCheckoutOpen(false);
+
+        const feeStr = billingCycle === "monthly" ? "R199.00" : "R1,899.00";
+        
+        addNotification({
+          category: 'membership',
+          icon: 'crown',
+          title: 'Membership Activated',
+          message: `Welcome to VIP Membership! You now have unlimited free mobile call-outs and 20% discount on detailing.`,
+          link: '/dashboard/customer/membership',
+          eventId: `mem-activated-${Date.now()}`,
+        });
+
+        addNotification({
+          category: 'system',
+          icon: 'check',
+          title: 'Payment Successful',
+          message: `Your payment of ${feeStr} for Diamond Elite Membership was processed successfully.`,
+          link: '/dashboard/customer/profile',
+          eventId: `mem-pay-${Date.now()}`,
+        });
+
         showToast(
-          `Payment of ${billingCycle === "monthly" ? "R199.00" : "R1,899.00"} confirmed! Diamond Elite Membership is now active.`,
+          `Payment of ${feeStr} confirmed! Diamond Elite Membership is now active.`,
           "success"
         );
       } catch (error) {
@@ -176,7 +199,17 @@ export default function CustomerMembership() {
       }
       setHasMembership(false);
       window.dispatchEvent(new Event("ww_membership_changed"));
-      showToast("Membership subscription cancelled. Reverted to Free Tier.", "info");
+
+      addNotification({
+        category: 'membership',
+        icon: 'check',
+        title: 'Membership Cancelled',
+        message: 'Your VIP Membership subscription has been cancelled.',
+        link: '/dashboard/customer/membership',
+        eventId: `mem-cancelled-${Date.now()}`,
+      });
+
+      showToast("Membership subscription cancelled successfully.", "info");
     } catch (error) {
       console.error("Failed to cancel membership status:", error);
       setHasMembership(false);

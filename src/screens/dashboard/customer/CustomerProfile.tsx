@@ -30,6 +30,7 @@ import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { auth, db } from "../../../lib/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
+import { useNotifications } from "../../../contexts/NotificationsContext";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import {
@@ -75,6 +76,7 @@ export default function CustomerProfile() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { showToast } = useToast();
+  const { addNotification } = useNotifications();
   const uid = currentUser?.uid;
 
   // ─── Real Profile Data (Auth + Scoped LocalStorage) ──────────────────────
@@ -315,6 +317,15 @@ export default function CustomerProfile() {
           { merge: true }
         );
       }
+
+      addNotification({
+        category: 'system',
+        icon: 'check',
+        title: 'Account Updated',
+        message: 'Your account information was successfully updated.',
+        link: '/dashboard/customer/profile',
+        eventId: `profile-update-${Date.now()}`,
+      });
 
       window.dispatchEvent(new Event("storage"));
       showToast("Profile details updated successfully!", "success");

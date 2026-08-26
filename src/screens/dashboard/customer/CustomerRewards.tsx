@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
+import { useNotifications } from '../../../contexts/NotificationsContext';
 import { Button } from '../../../components/ui/Button';
 import {
   LOYALTY_TIERS,
@@ -51,6 +52,7 @@ export default function CustomerRewards() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { showToast } = useToast();
+  const { addNotification } = useNotifications();
   const uid = currentUser?.uid;
 
   const [hasMembership, setHasMembership] = useState<boolean>(() => {
@@ -151,6 +153,15 @@ export default function CustomerRewards() {
     try {
       const res = await recordReferralPoints(uid, friendName.trim());
       if (res.success) {
+        addNotification({
+          category: 'rewards',
+          icon: 'star',
+          title: 'Reward Points Added',
+          message: `You've earned ${res.points} bonus reward points for referring ${friendName.trim()}.`,
+          link: '/dashboard/customer/rewards',
+          eventId: `referral-points-${Date.now()}`,
+        });
+
         showToast(`🎉 Invite sent! +${res.points} bonus reward points added!`, 'success');
         setFriendName('');
         setIsReferralOpen(false);
@@ -170,6 +181,24 @@ export default function CustomerRewards() {
       const targetApptId = appointments[0]?.id || `demo-wash-${Date.now()}`;
       const res = await recordReviewPoints(uid, targetApptId, reviewRating);
       if (res.success) {
+        addNotification({
+          category: 'reviews',
+          icon: 'star',
+          title: 'Review Submitted',
+          message: `Thank you for reviewing your recent service. Your feedback helps us improve WashWizzy.`,
+          link: '/dashboard/customer/reviews',
+          eventId: `review-sub-${targetApptId}`,
+        });
+
+        addNotification({
+          category: 'rewards',
+          icon: 'star',
+          title: 'Reward Points Added',
+          message: `You've earned ${res.points} reward points for submitting a service review.`,
+          link: '/dashboard/customer/rewards',
+          eventId: `review-points-${targetApptId}`,
+        });
+
         showToast(`⭐ Review submitted! +${res.points} loyalty points earned.`, 'success');
         setIsReviewOpen(false);
         setReviewFeedback('');
@@ -191,6 +220,15 @@ export default function CustomerRewards() {
     try {
       const res = await redeemReward(uid, selectedRewardToRedeem.id);
       if (res.success && res.redeemedReward) {
+        addNotification({
+          category: 'rewards',
+          icon: 'gift',
+          title: 'Reward Redeemed',
+          message: `You successfully redeemed "${selectedRewardToRedeem.title}" for ${selectedRewardToRedeem.pointsCost} points.`,
+          link: '/dashboard/customer/rewards',
+          eventId: `reward-redeemed-${res.redeemedReward.id}`,
+        });
+
         showToast(`🎉 Redeemed "${selectedRewardToRedeem.title}" successfully!`, 'success');
         setSelectedRewardToRedeem(null);
         setSelectedVoucher(res.redeemedReward);
