@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Bell,
   CalendarCheck,
@@ -22,8 +23,8 @@ import {
   Zap,
   Shield,
   Tag,
+  ExternalLink,
 } from "lucide-react";
-import { useEffect } from "react";
 import { useNotifications, type AppNotification } from "../../../contexts/NotificationsContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -281,36 +282,27 @@ function PreferencesModal({
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function CustomerNotifications() {
-  // All notification data comes from shared context
-  const { notifications, unreadCount, markRead, markAllRead, deleteNotifications, clearAll, setNotifications } = useNotifications();
+  const navigate = useNavigate();
+  // All notification data and persistent settings come from shared context
+  const {
+    notifications,
+    clearedNotifications,
+    unreadCount,
+    clearedCount,
+    settings,
+    updateSetting,
+    markRead,
+    markAllRead,
+    deleteNotifications,
+    clearAll,
+    setNotifications,
+  } = useNotifications();
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(["n1", "n2"]));
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [clearedExpanded, setClearedExpanded] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
-
-  // Settings (local to the page — delivery/frequency preferences are UI-only)
-  const [settings, setSettings] = useState<PreferencesSettings>({
-    appointments: true,
-    rewards: true,
-    promotions: false,
-    systemUpdates: true,
-    reviews: true,
-    pushNotifications: true,
-    email: true,
-    sms: false,
-    quietHours: false,
-    quietFrom: "22:00",
-    quietTo: "07:00",
-    frequency: "instant",
-    sound: true,
-    vibration: true,
-  });
-
-  const updateSetting = useCallback((key: keyof PreferencesSettings, value: boolean | string) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
-  }, []);
 
   // ─── Filtering ──────────────────────────────────────────────────────────────
 
@@ -449,9 +441,25 @@ export default function CustomerNotifications() {
             {/* Cards */}
             <div className="space-y-2">
               {filtered.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 bg-[#171717] border border-[#2C2C2C] rounded-2xl">
-                  <Bell className="w-10 h-10 text-[#3A3A3A] mb-4" />
-                  <p className="text-[#71717A] text-sm">No notifications in this category.</p>
+                <div className="flex flex-col items-center justify-center py-16 px-6 bg-[#171717] border border-[#2C2C2C] rounded-2xl text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-[#E86A33]/10 border border-[#E86A33]/20 flex items-center justify-center mb-3.5">
+                    <Bell className="w-6 h-6 text-[#E86A33]" />
+                  </div>
+                  {activeTab === "all" ? (
+                    <>
+                      <h3 className="text-base font-semibold text-[#F5F5F5] mb-1.5">No notifications yet</h3>
+                      <p className="text-xs sm:text-sm text-[#71717A] max-w-md leading-relaxed">
+                        You're all caught up. Notifications about your appointments, rewards, offers, and account activity will appear here.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-base font-semibold text-[#F5F5F5] mb-1.5">No {activeTab} notifications</h3>
+                      <p className="text-xs sm:text-sm text-[#71717A] max-w-md leading-relaxed">
+                        When you receive updates for {activeTab}, they will appear here.
+                      </p>
+                    </>
+                  )}
                 </div>
               ) : (
                 filtered.map((notif) => {
@@ -488,7 +496,23 @@ export default function CustomerNotifications() {
                         <p className={`text-[13px] leading-relaxed mt-1 ${notif.isRead ? "text-[#71717A]" : "text-[#A1A1AA]"}`}>
                           {notif.message}
                         </p>
-                        <p className="text-[11px] text-[#52525B] mt-2">{notif.time}</p>
+                        <div className="flex items-center justify-between mt-2.5">
+                          <p className="text-[11px] text-[#52525B]">{notif.time}</p>
+                          {notif.link && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!notif.isRead) markRead([notif.id]);
+                                navigate(notif.link!);
+                              }}
+                              className="flex items-center gap-1 text-[11px] font-semibold text-[#E86A33] hover:text-[#FF8055] transition-colors"
+                            >
+                              View details
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -502,13 +526,30 @@ export default function CustomerNotifications() {
                 className="w-full flex items-center justify-between px-4 py-3 bg-[#171717] border border-[#2C2C2C] rounded-xl text-[13px] text-[#71717A] hover:text-[#A1A1AA] hover:border-[#3A3A3A] transition-all">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-[#A1A1AA]">Recently Cleared</span>
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#2C2C2C] text-[#71717A] font-semibold">12</span>
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#2C2C2C] text-[#71717A] font-semibold">
+                    {clearedCount}
+                  </span>
                 </div>
                 {clearedExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
               </button>
               {clearedExpanded && (
-                <div className="mt-2 px-4 py-6 bg-[#171717] border border-[#2C2C2C] rounded-xl text-center">
-                  <p className="text-[13px] text-[#52525B]">Cleared notifications are stored for 30 days.</p>
+                <div className="mt-2 p-4 bg-[#171717] border border-[#2C2C2C] rounded-xl">
+                  {clearedNotifications.length === 0 ? (
+                    <p className="text-[13px] text-[#52525B] text-center py-3">
+                      No cleared notifications. Cleared notifications are stored for 30 days.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {clearedNotifications.slice(0, 10).map((cleared) => (
+                        <div key={cleared.id} className="flex items-center justify-between py-2 border-b border-[#232323] last:border-0">
+                          <div className="flex items-center gap-2 min-w-0 pr-3">
+                            <span className="text-[13px] font-medium text-[#A1A1AA] truncate">{cleared.title}</span>
+                          </div>
+                          <span className="text-[11px] text-[#52525B] shrink-0">{cleared.time}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

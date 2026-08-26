@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
+import { useNotifications } from '../../../contexts/NotificationsContext';
 import { cancelAppointment, type StoredAppointment } from '../../../lib/appointments';
 import { Button } from '../../../components/ui/Button';
 import { ArrowLeft, User } from 'lucide-react';
@@ -11,6 +12,7 @@ export default function CustomerCancel() {
   const location = useLocation();
   const { currentUser } = useAuth();
   const { showToast } = useToast();
+  const { addNotification } = useNotifications();
 
   const appointment = location.state?.appointment as StoredAppointment | undefined;
   const [reason, setReason] = useState('');
@@ -35,6 +37,16 @@ export default function CustomerCancel() {
     setIsSubmitting(true);
     try {
       await cancelAppointment(appointment.id, reason.trim(), currentUser?.uid);
+      
+      addNotification({
+        category: 'appointments',
+        icon: 'calendar',
+        title: 'Appointment Cancelled',
+        message: `Your appointment for ${appointment.packageName} on ${appointment.date} has been cancelled.`,
+        link: '/dashboard/customer/appointments',
+        eventId: `appt-cancel-${appointment.id}-${Date.now()}`,
+      });
+
       showToast('Appointment has been successfully cancelled', 'info');
       navigate('/dashboard/customer/appointments');
     } catch (err: any) {
