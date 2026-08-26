@@ -18,7 +18,8 @@ export type NotificationCategory =
   | "rewards"
   | "promotions"
   | "system"
-  | "reviews";
+  | "reviews"
+  | "membership";
 
 export interface AppNotification {
   id: string;
@@ -43,6 +44,7 @@ export interface NotificationSettings {
   promotions: boolean;
   systemUpdates: boolean;
   reviews: boolean;
+  membership: boolean;
   pushNotifications: boolean;
   email: boolean;
   sms: boolean;
@@ -88,6 +90,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   promotions: true,
   systemUpdates: true,
   reviews: true,
+  membership: true,
   pushNotifications: true,
   email: true,
   sms: false,
@@ -128,6 +131,8 @@ function getDefaultCategoryVisuals(category: NotificationCategory) {
       return { icon: "gift" as const, iconColor: "text-[#FBBF24]", iconBg: "bg-[#FBBF24]/10" };
     case "reviews":
       return { icon: "star" as const, iconColor: "text-[#E86A33]", iconBg: "bg-[#E86A33]/10" };
+    case "membership":
+      return { icon: "crown" as const, iconColor: "text-[#A78BFA]", iconBg: "bg-[#A78BFA]/10" };
     case "system":
     default:
       return { icon: "check" as const, iconColor: "text-[#35B86B]", iconBg: "bg-[#35B86B]/10" };
@@ -539,6 +544,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       if (n.category === "promotions" && !settings.promotions) return false;
       if (n.category === "system" && !settings.systemUpdates) return false;
       if (n.category === "reviews" && !settings.reviews) return false;
+      if (n.category === "membership" && !settings.membership) return false;
       return true;
     })
     .map((n) => ({
