@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   User,
   Mail,
+  Phone,
   ShieldCheck,
   Award,
   Crown,
@@ -15,18 +16,17 @@ import {
   Clock,
   ArrowRight,
   CreditCard,
-  CheckCircle2,
-  RotateCcw,
   Camera,
   X,
-  AlertTriangle,
-  Receipt,
-  FileText,
-  DollarSign,
   ChevronRight,
+  MessageSquare,
+  Star,
+  Lock,
+  Receipt,
+  RotateCcw,
 } from "lucide-react";
 import { updateProfile } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { auth, db } from "../../../lib/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
@@ -39,164 +39,69 @@ import {
   LOYALTY_TIERS,
   type RewardsSummary,
 } from "../../../lib/rewards";
+import {
+  getStoredReviews,
+  subscribeToCustomerReviews,
+  calculateReviewStats,
+  type ReviewStats,
+} from "../../../lib/reviews";
+import {
+  getStoredAppointments,
+  type StoredAppointment,
+} from "../../../lib/appointments";
+import {
+  getStoredVehicles,
+  saveCustomerVehicle,
+  deleteCustomerVehicle,
+  subscribeToCustomerVehicles,
+  type CustomerVehicle,
+} from "../../../lib/vehicles";
+import {
+  getStoredPaymentMethods,
+  savePaymentMethod,
+  deletePaymentMethod,
+  subscribeToPaymentMethods,
+  type SavedPaymentMethod,
+} from "../../../lib/payments";
 
-// Interface Definitions
-interface Vehicle {
-  id: string;
-  plate: string;
-  make: string;
-  model: string;
-  color: string;
-  preferredPackage: string;
-}
-
-interface RecentBooking {
-  id: string;
-  service: string;
-  date: string;
-  time: string;
-  vehicle: string;
-  status: "Completed" | "Upcoming" | "Staff on route" | "Cancelled";
-  amount: string;
-  isRefunded?: boolean;
-}
-
-interface Transaction {
-  id: string;
-  title: string;
-  date: string;
-  amount: string;
-  type: "payment" | "refund";
-  status: string;
-  cardLast4: string;
-}
-
-const DEFAULT_VEHICLES: Vehicle[] = [
-  {
-    id: "veh-1",
-    plate: "ABC-1234",
-    make: "Tesla",
-    model: "Model 3",
-    color: "Metallic Silver",
-    preferredPackage: "Ultimate Ceramic Wash",
-  },
-  {
-    id: "veh-2",
-    plate: "XYZ-7890",
-    make: "Ford",
-    model: "F-150 Raptor",
-    color: "Midnight Black",
-    preferredPackage: "Exterior & Interior Deep Clean",
-  },
-];
-
-const INITIAL_BOOKINGS: RecentBooking[] = [
-  {
-    id: "WW-98214",
-    service: "Premium Detail",
-    date: "Today, Oct 24",
-    time: "2:00 PM - 3:00 PM",
-    vehicle: "Tesla Model 3 (ABC-1234)",
-    status: "Staff on route",
-    amount: "R120.00",
-  },
-  {
-    id: "WW-98190",
-    service: "Exterior & Interior Deep Clean",
-    date: "Tomorrow, Oct 25",
-    time: "10:00 AM - 11:30 AM",
-    vehicle: "Ford F-150 (XYZ-7890)",
-    status: "Upcoming",
-    amount: "R150.00",
-  },
-  {
-    id: "WW-97840",
-    service: "Ultimate Ceramic Wash",
-    date: "Oct 18, 2026",
-    time: "1:00 PM - 2:30 PM",
-    vehicle: "Tesla Model 3 (ABC-1234)",
-    status: "Completed",
-    amount: "R120.00",
-  },
-  {
-    id: "WW-96420",
-    service: "Standard Foam Wash",
-    date: "Oct 12, 2026",
-    time: "9:00 AM - 10:00 AM",
-    vehicle: "Honda Civic (CA-5521)",
-    status: "Cancelled",
-    amount: "R85.00",
-    isRefunded: true,
-  },
-];
-
-const INITIAL_TRANSACTIONS: Transaction[] = [
-  {
-    id: "TXN-88412",
-    title: "Monthly Plan Auto-pay",
-    date: "Oct 20, 2026",
-    amount: "R120.00",
-    type: "payment",
-    status: "Successful",
-    cardLast4: "4242",
-  },
-  {
-    id: "TXN-87950",
-    title: "Add-on: Wheel Wax & Tire Polish",
-    date: "Oct 18, 2026",
-    amount: "R85.00",
-    type: "payment",
-    status: "Successful",
-    cardLast4: "4242",
-  },
-  {
-    id: "TXN-86510",
-    title: "Refund: Cancelled Standard Wash",
-    date: "Oct 12, 2026",
-    amount: "R85.00",
-    type: "refund",
-    status: "Refunded to card",
-    cardLast4: "4242",
-  },
+const PREFERRED_PACKAGES = [
+  "Express Wash",
+  "Premium Wash",
+  "Elite Wash",
+  "Custom Package",
 ];
 
 export default function CustomerProfile() {
   const navigate = useNavigate();
-  const { currentUser, refreshUser } = useAuth();
+  const { currentUser } = useAuth();
   const { showToast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Per-user localStorage key helper — prevents data leaking between accounts.
   const uid = currentUser?.uid;
-  const nameKey    = uid ? `ww_profile_name_${uid}`   : null;
-  const phoneKey   = uid ? `ww_profile_phone_${uid}`  : null;
-  const avatarKey  = uid ? `ww_profile_avatar_${uid}` : null;
 
-  // Profile Information State with local persistence fallback
-  const [profileName, setProfileName] = useState(() => {
-    // Firebase displayName is source of truth (kept in sync via updateProfile).
-    // Fall back to uid-scoped localStorage only when Firebase has no value.
+  // ─── Real Profile Data (Auth + Scoped LocalStorage) ──────────────────────
+  const [profileName, setProfileName] = useState<string>(() => {
+    if (!uid) return currentUser?.displayName || "Customer";
     return (
+      localStorage.getItem(`ww_profile_name_${uid}`) ||
       currentUser?.displayName ||
-      (nameKey ? localStorage.getItem(nameKey) : null) ||
-      "Qaasim Isaacs"
-    );
-  });
-  const [profilePhone, setProfilePhone] = useState(() => {
-    return (phoneKey ? localStorage.getItem(phoneKey) : null) || "+27 82 123 4567";
-  });
-  const [profileEmail] = useState(() => {
-    return currentUser?.email || "qaasim@gmail.com";
-  });
-  const [profileAvatar, setProfileAvatar] = useState<string>(() => {
-    // localStorage leads for avatar: base64 uploads can't be stored in Firebase Auth photoURL.
-    return (
-      (avatarKey ? localStorage.getItem(avatarKey) : null) ||
-      currentUser?.photoURL ||
-      "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250"
+      "Customer"
     );
   });
 
+  const [profilePhone, setProfilePhone] = useState<string>(() => {
+    if (!uid) return "";
+    return localStorage.getItem(`ww_profile_phone_${uid}`) || "";
+  });
+
+  const [profileAvatar, setProfileAvatar] = useState<string | null>(() => {
+    if (!uid) return currentUser?.photoURL || null;
+    return (
+      localStorage.getItem(`ww_profile_avatar_${uid}`) ||
+      currentUser?.photoURL ||
+      null
+    );
+  });
+
+  // ─── Real Membership State ────────────────────────────────────────────────
   const [hasMembership, setHasMembership] = useState<boolean>(() => {
     if (!uid) return false;
     const cached = localStorage.getItem(`ww_has_membership_${uid}`);
@@ -204,20 +109,32 @@ export default function CustomerProfile() {
   });
 
   useEffect(() => {
-    if (!currentUser?.uid) return;
-    const unsub = onSnapshot(doc(db, "users", currentUser.uid), (snap) => {
-      if (snap.exists()) {
-        const mem = snap.data()?.hasMembership === true;
-        setHasMembership(mem);
-        localStorage.setItem(`ww_has_membership_${currentUser.uid}`, JSON.stringify(mem));
-      }
-    }, (err) => {
-      console.error("Failed to load user profile doc:", err);
-    });
-    return () => unsub();
-  }, [currentUser?.uid]);
+    if (!uid) return;
+    const unsub = onSnapshot(
+      doc(db, "users", uid),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const mem = data?.hasMembership === true;
+          setHasMembership(mem);
+          localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(mem));
 
-  // Live Rewards State (synchronized with Firestore and local cache)
+          if (data?.displayName && !localStorage.getItem(`ww_profile_name_${uid}`)) {
+            setProfileName(data.displayName);
+          }
+          if (data?.phone && !localStorage.getItem(`ww_profile_phone_${uid}`)) {
+            setProfilePhone(data.phone);
+          }
+        }
+      },
+      (err) => {
+        console.warn("Firestore user profile sync warning:", err);
+      }
+    );
+    return () => unsub();
+  }, [uid]);
+
+  // ─── Real Rewards State ───────────────────────────────────────────────────
   const [rewardsSummary, setRewardsSummary] = useState<RewardsSummary>(() =>
     getRewardsSummary(uid)
   );
@@ -229,417 +146,599 @@ export default function CustomerProfile() {
     return () => unsub();
   }, [uid]);
 
-  // Vehicles State with local storage
-  const [vehicles, setVehicles] = useState<Vehicle[]>(() => {
-    const saved = localStorage.getItem("ww_vehicles");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error("Failed to parse saved vehicles", e);
-      }
-    }
-    return DEFAULT_VEHICLES;
-  });
-
-  useEffect(() => {
-    localStorage.setItem("ww_vehicles", JSON.stringify(vehicles));
-  }, [vehicles]);
-
-  // Modals state
-  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const [editFormName, setEditFormName] = useState(profileName);
-  const [editFormPhone, setEditFormPhone] = useState(profilePhone);
-
-  const [isAddVehicleOpen, setIsAddVehicleOpen] = useState(false);
-  const [isEditVehicleOpen, setIsEditVehicleOpen] = useState(false);
-  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
-
-  const [vehiclePlate, setVehiclePlate] = useState("");
-  const [vehicleMake, setVehicleMake] = useState("");
-  const [vehicleModel, setVehicleModel] = useState("");
-  const [vehicleColor, setVehicleColor] = useState("");
-  const [vehiclePackage, setVehiclePackage] = useState("Ultimate Ceramic Wash");
-
-  const [vehicleToDelete, setVehicleToDelete] = useState<Vehicle | null>(null);
-
-  const [activeReceipt, setActiveReceipt] = useState<RecentBooking | null>(null);
-  const [activeTransaction, setActiveTransaction] = useState<Transaction | null>(null);
-  const [isAddCardOpen, setIsAddCardOpen] = useState(false);
-  const [newCardNumber, setNewCardNumber] = useState("");
-  const [newCardExpiry, setNewCardExpiry] = useState("");
-  const [newCardCvc, setNewCardCvc] = useState("");
-  const [newCardHolder, setNewCardHolder] = useState(profileName);
-
-  // Avatar Upload Handler
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        showToast("Image size must be less than 5MB", "error");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        setProfileAvatar(result);
-        if (avatarKey) localStorage.setItem(avatarKey, result);
-        // Trigger re-render of all useAuth() consumers (e.g. sidebar) so they
-        // re-read localStorage and display the updated avatar immediately.
-        refreshUser();
-        showToast("Profile image updated successfully!", "success");
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Profile Edit Save
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editFormName.trim()) {
-      showToast("Name cannot be empty", "error");
-      return;
-    }
-    try {
-      // Persist the display name to Firebase Auth so it propagates app-wide
-      if (auth.currentUser) {
-        await updateProfile(auth.currentUser, { displayName: editFormName.trim() });
-      }
-    } catch (err) {
-      console.error("Failed to update Firebase Auth profile:", err);
-      showToast("Failed to update profile. Please try again.", "error");
-      return;
-    }
-    // Update local state and localStorage as fallback / offline cache
-    setProfileName(editFormName);
-    setProfilePhone(editFormPhone);
-    if (nameKey)  localStorage.setItem(nameKey,  editFormName);
-    if (phoneKey) localStorage.setItem(phoneKey, editFormPhone);
-    // Force all useAuth() consumers (e.g. sidebar) to re-render with the new displayName
-    refreshUser();
-    setIsEditProfileOpen(false);
-    showToast("Profile details updated successfully!", "success");
-  };
-
-  // Add Vehicle
-  const handleAddVehicle = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!vehiclePlate.trim() || !vehicleMake.trim() || !vehicleModel.trim()) {
-      showToast("Please fill in all required vehicle details", "error");
-      return;
-    }
-
-    const newVeh: Vehicle = {
-      id: `veh-${vehicles.length + 1}-${vehiclePlate.toUpperCase().trim().replace(/[^A-Z0-9]/g, '')}`,
-      plate: vehiclePlate.toUpperCase().trim(),
-      make: vehicleMake.trim(),
-      model: vehicleModel.trim(),
-      color: vehicleColor.trim() || "Black",
-      preferredPackage: vehiclePackage,
-    };
-
-    setVehicles((prev) => [newVeh, ...prev]);
-    setIsAddVehicleOpen(false);
-    resetVehicleForm();
-    showToast(`Vehicle ${newVeh.plate} added successfully!`, "success");
-  };
-
-  // Dynamic Tier & Progress calculations for Profile Loyalty Card
-  const currentTierObj = LOYALTY_TIERS[rewardsSummary.currentTier] || LOYALTY_TIERS.Bronze;
   const tierProgress = getTierProgress(rewardsSummary.lifetimePoints);
+  const currentTierObj =
+    LOYALTY_TIERS[rewardsSummary.currentTier] || LOYALTY_TIERS.Bronze;
   const nextTierObj = tierProgress.nextTier;
 
-  // Edit Vehicle Open
-  const openEditVehicleModal = (v: Vehicle) => {
-    setSelectedVehicle(v);
-    setVehiclePlate(v.plate);
-    setVehicleMake(v.make);
-    setVehicleModel(v.model);
-    setVehicleColor(v.color);
-    setVehiclePackage(v.preferredPackage);
-    setIsEditVehicleOpen(true);
+  // ─── Real Reviews State ───────────────────────────────────────────────────
+  const [reviewStats, setReviewStats] = useState<ReviewStats>(() =>
+    calculateReviewStats(getStoredReviews(uid))
+  );
+
+  useEffect(() => {
+    const unsub = subscribeToCustomerReviews(uid, (revs) => {
+      setReviewStats(calculateReviewStats(revs));
+    });
+    return () => unsub();
+  }, [uid]);
+
+  // ─── Real Vehicles State ──────────────────────────────────────────────────
+  const [vehicles, setVehicles] = useState<CustomerVehicle[]>(() =>
+    getStoredVehicles(uid)
+  );
+
+  useEffect(() => {
+    const unsub = subscribeToCustomerVehicles(uid, (list) => {
+      setVehicles(list);
+    });
+    return () => unsub();
+  }, [uid]);
+
+  // ─── Real Appointments State ──────────────────────────────────────────────
+  const [appointments, setAppointments] = useState<StoredAppointment[]>(() =>
+    getStoredAppointments(uid)
+  );
+
+  useEffect(() => {
+    // Initial fetch and handle local changes
+    const handleApptsChange = () => {
+      setAppointments(getStoredAppointments(uid));
+    };
+    handleApptsChange();
+
+    window.addEventListener("storage", handleApptsChange);
+    return () => {
+      window.removeEventListener("storage", handleApptsChange);
+    };
+  }, [uid]);
+
+  // ─── Real Payment Methods State ───────────────────────────────────────────
+  const [paymentMethods, setPaymentMethods] = useState<SavedPaymentMethod[]>(() =>
+    getStoredPaymentMethods(uid)
+  );
+
+  useEffect(() => {
+    const unsub = subscribeToPaymentMethods(uid, (list) => {
+      setPaymentMethods(list);
+    });
+    return () => unsub();
+  }, [uid]);
+
+  // ─── Modals State ─────────────────────────────────────────────────────────
+  // Edit Profile Modal
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [editName, setEditName] = useState(profileName);
+  const [editPhone, setEditPhone] = useState(profilePhone);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Add / Edit Vehicle Modal
+  const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
+  const [vehMake, setVehMake] = useState("");
+  const [vehModel, setVehModel] = useState("");
+  const [vehPlate, setVehPlate] = useState("");
+  const [vehColor, setVehColor] = useState("");
+  const [vehPreferredPackage, setVehPreferredPackage] = useState("Express Wash");
+  const [vehErrors, setVehErrors] = useState<Record<string, string>>({});
+  const [isSavingVehicle, setIsSavingVehicle] = useState(false);
+
+  // Delete Vehicle Confirmation
+  const [deletingVehicle, setDeletingVehicle] = useState<CustomerVehicle | null>(null);
+  const [isDeletingVehicle, setIsDeletingVehicle] = useState(false);
+
+  // Add Payment Method Modal
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [cardHolder, setCardHolder] = useState(profileName);
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+  const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
+
+  // Delete Payment Method Confirmation
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
+  const [isDeletingPayment, setIsDeletingPayment] = useState(false);
+
+  // Receipt Modal
+  const [viewingReceipt, setViewingReceipt] = useState<StoredAppointment | null>(null);
+
+  // ─── Profile Initials Generator ───────────────────────────────────────────
+  const getInitials = (name: string) => {
+    if (!name || name.trim() === "") return "CW";
+    const parts = name.trim().split(" ");
+    if (parts.length >= 2) {
+      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
   };
 
-  // Save Edit Vehicle
-  const handleSaveEditVehicle = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedVehicle) return;
-    if (!vehiclePlate.trim() || !vehicleMake.trim() || !vehicleModel.trim()) {
-      showToast("Please fill in all required vehicle details", "error");
+  // ─── Profile Photo Upload Handler ─────────────────────────────────────────
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      showToast("Please select a valid image file (PNG, JPG).", "error");
       return;
     }
 
-    setVehicles((prev) =>
-      prev.map((v) =>
-        v.id === selectedVehicle.id
-          ? {
-              ...v,
-              plate: vehiclePlate.toUpperCase().trim(),
-              make: vehicleMake.trim(),
-              model: vehicleModel.trim(),
-              color: vehicleColor.trim() || "Black",
-              preferredPackage: vehiclePackage,
-            }
-          : v
-      )
-    );
-
-    setIsEditVehicleOpen(false);
-    resetVehicleForm();
-    showToast("Vehicle updated successfully!", "success");
-  };
-
-  // Delete Vehicle
-  const handleConfirmDeleteVehicle = () => {
-    if (!vehicleToDelete) return;
-    setVehicles((prev) => prev.filter((v) => v.id !== vehicleToDelete.id));
-    showToast(`Vehicle ${vehicleToDelete.plate} removed`, "info");
-    setVehicleToDelete(null);
-  };
-
-  const resetVehicleForm = () => {
-    setSelectedVehicle(null);
-    setVehiclePlate("");
-    setVehicleMake("");
-    setVehicleModel("");
-    setVehicleColor("");
-    setVehiclePackage("Ultimate Ceramic Wash");
-  };
-
-  // Save Card
-  const handleSavePaymentMethod = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCardNumber.trim() || !newCardExpiry.trim() || !newCardCvc.trim()) {
-      showToast("Please complete all card details", "error");
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("Image size must be under 5MB.", "error");
       return;
     }
-    setIsAddCardOpen(false);
-    setNewCardNumber("");
-    setNewCardExpiry("");
-    setNewCardCvc("");
-    showToast("Payment method saved securely!", "success");
+
+    const reader = new FileReader();
+    reader.onload = (loadEvt) => {
+      const base64 = loadEvt.target?.result as string;
+      if (base64) {
+        setProfileAvatar(base64);
+        if (uid) {
+          localStorage.setItem(`ww_profile_avatar_${uid}`, base64);
+        }
+        showToast("Profile avatar updated successfully!", "success");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ─── Save Profile Details Handler ─────────────────────────────────────────
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editName.trim()) {
+      showToast("Name cannot be empty.", "error");
+      return;
+    }
+
+    setIsSavingProfile(true);
+    try {
+      const trimmedName = editName.trim();
+      const trimmedPhone = editPhone.trim();
+
+      setProfileName(trimmedName);
+      setProfilePhone(trimmedPhone);
+
+      if (uid) {
+        localStorage.setItem(`ww_profile_name_${uid}`, trimmedName);
+        localStorage.setItem(`ww_profile_phone_${uid}`, trimmedPhone);
+
+        // Update Firebase Auth displayName
+        if (auth.currentUser) {
+          await updateProfile(auth.currentUser, { displayName: trimmedName });
+        }
+
+        // Update Firestore User Doc
+        await setDoc(
+          doc(db, "users", uid),
+          { displayName: trimmedName, phone: trimmedPhone },
+          { merge: true }
+        );
+      }
+
+      window.dispatchEvent(new Event("storage"));
+      showToast("Profile details updated successfully!", "success");
+      setIsEditProfileOpen(false);
+    } catch (err) {
+      console.error("Failed to update profile:", err);
+      showToast("Could not update profile details.", "error");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  // ─── Vehicle Handlers ─────────────────────────────────────────────────────
+  const openAddVehicleModal = () => {
+    setEditingVehicleId(null);
+    setVehMake("");
+    setVehModel("");
+    setVehPlate("");
+    setVehColor("");
+    setVehPreferredPackage("Express Wash");
+    setVehErrors({});
+    setIsVehicleModalOpen(true);
+  };
+
+  const openEditVehicleModal = (veh: CustomerVehicle) => {
+    setEditingVehicleId(veh.id);
+    setVehMake(veh.make);
+    setVehModel(veh.model);
+    setVehPlate(veh.plate);
+    setVehColor(veh.color);
+    setVehPreferredPackage(veh.preferredPackage || "Express Wash");
+    setVehErrors({});
+    setIsVehicleModalOpen(true);
+  };
+
+  const handleSaveVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errors: Record<string, string> = {};
+
+    if (!vehMake.trim()) errors.make = "Vehicle make is required";
+    if (!vehModel.trim()) errors.model = "Vehicle model is required";
+    if (!vehPlate.trim()) errors.plate = "Licence plate is required";
+    if (!vehColor.trim()) errors.color = "Vehicle colour is required";
+
+    if (Object.keys(errors).length > 0) {
+      setVehErrors(errors);
+      return;
+    }
+
+    setIsSavingVehicle(true);
+    const vehicleData: CustomerVehicle = {
+      id: editingVehicleId || `veh-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      make: vehMake.trim(),
+      model: vehModel.trim(),
+      plate: vehPlate.trim().toUpperCase(),
+      color: vehColor.trim(),
+      preferredPackage: vehPreferredPackage,
+      createdAt: Date.now(),
+    };
+
+    try {
+      const ok = await saveCustomerVehicle(vehicleData, uid);
+      if (ok) {
+        showToast(
+          editingVehicleId
+            ? "Vehicle updated successfully!"
+            : "Vehicle added to your account!",
+          "success"
+        );
+        setIsVehicleModalOpen(false);
+      } else {
+        showToast("Failed to save vehicle.", "error");
+      }
+    } catch {
+      showToast("Something went wrong saving vehicle.", "error");
+    } finally {
+      setIsSavingVehicle(false);
+    }
+  };
+
+  const handleConfirmDeleteVehicle = async () => {
+    if (!deletingVehicle) return;
+    setIsDeletingVehicle(true);
+    try {
+      const ok = await deleteCustomerVehicle(deletingVehicle.id, uid);
+      if (ok) {
+        showToast("Vehicle removed from account.", "success");
+        setDeletingVehicle(null);
+      } else {
+        showToast("Failed to delete vehicle.", "error");
+      }
+    } catch {
+      showToast("Error deleting vehicle.", "error");
+    } finally {
+      setIsDeletingVehicle(false);
+    }
+  };
+
+  // ─── Payment Method Handlers ──────────────────────────────────────────────
+  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, "").slice(0, 16);
+    const formatted = raw.match(/.{1,4}/g)?.join(" ") || raw;
+    setCardNumber(formatted);
+    if (cardErrors.cardNumber) setCardErrors((prev) => ({ ...prev, cardNumber: "" }));
+  };
+
+  const handleCardExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let raw = e.target.value.replace(/\D/g, "").slice(0, 4);
+    if (raw.length >= 3) {
+      raw = `${raw.slice(0, 2)}/${raw.slice(2)}`;
+    }
+    setCardExpiry(raw);
+    if (cardErrors.cardExpiry) setCardErrors((prev) => ({ ...prev, cardExpiry: "" }));
+  };
+
+  const handleCardCvvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, "").slice(0, 4);
+    setCardCvv(raw);
+    if (cardErrors.cardCvv) setCardErrors((prev) => ({ ...prev, cardCvv: "" }));
+  };
+
+  const handleSavePaymentMethod = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errors: Record<string, string> = {};
+
+    if (!cardHolder.trim()) errors.cardHolder = "Cardholder name is required";
+    const cleanDigits = cardNumber.replace(/\s/g, "");
+    if (!cleanDigits || cleanDigits.length < 15) {
+      errors.cardNumber = "Valid 16-digit card number required";
+    }
+    if (!cardExpiry || !/^\d{2}\/\d{2}$/.test(cardExpiry)) {
+      errors.cardExpiry = "Expiry must be MM/YY";
+    }
+    if (!cardCvv || cardCvv.length < 3) {
+      errors.cardCvv = "Valid CVV required";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setCardErrors(errors);
+      return;
+    }
+
+    setIsSavingPayment(true);
+
+    // SECURITY: Detect card brand & store ONLY safe display information.
+    // Full card number and CVV are NEVER stored in Firestore or localStorage.
+    let brand: "visa" | "mastercard" | "amex" | "card" = "card";
+    if (cleanDigits.startsWith("4")) brand = "visa";
+    else if (/^5[1-5]/.test(cleanDigits)) brand = "mastercard";
+    else if (/^3[47]/.test(cleanDigits)) brand = "amex";
+
+    const last4 = cleanDigits.slice(-4);
+    const newMethod: SavedPaymentMethod = {
+      id: `pm-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      cardBrand: brand,
+      cardHolder: cardHolder.trim(),
+      last4,
+      expiry: cardExpiry,
+      isDefault: paymentMethods.length === 0,
+      createdAt: Date.now(),
+    };
+
+    try {
+      const ok = await savePaymentMethod(newMethod, uid);
+      if (ok) {
+        showToast("Payment method saved securely!", "success");
+        // Clear sensitive form states
+        setCardNumber("");
+        setCardCvv("");
+        setCardExpiry("");
+        setIsPaymentModalOpen(false);
+      } else {
+        showToast("Failed to save payment method.", "error");
+      }
+    } catch {
+      showToast("Something went wrong saving card.", "error");
+    } finally {
+      setIsSavingPayment(false);
+    }
+  };
+
+  const handleConfirmDeletePayment = async () => {
+    if (!deletingPaymentId) return;
+    setIsDeletingPayment(true);
+    try {
+      const ok = await deletePaymentMethod(deletingPaymentId, uid);
+      if (ok) {
+        showToast("Payment method removed.", "success");
+        setDeletingPaymentId(null);
+      } else {
+        showToast("Failed to remove payment method.", "error");
+      }
+    } catch {
+      showToast("Error removing payment method.", "error");
+    } finally {
+      setIsDeletingPayment(false);
+    }
   };
 
   return (
-    <div className="flex flex-col gap-8 pb-12 animate-in fade-in slide-in-from-bottom-3 duration-300 fill-mode-forwards text-[#F5F5F5]">
-      {/* Top Header */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl md:text-3xl font-bold font-display tracking-tight text-[#F5F5F5]">
+    <div className="flex flex-col gap-8 pb-16 text-[#F5F5F5] animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-forwards">
+      {/* ─── 1. PAGE HEADER ─── */}
+      <div className="flex flex-col gap-1.5 border-b border-[#2C2C2C] pb-6">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#E86A33]/15 text-[#E86A33] border border-[#E86A33]/30">
+            <User className="w-3.5 h-3.5 text-[#E86A33]" />
+            Customer Account
+          </span>
+          {hasMembership && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30">
+              <Sparkles className="w-3.5 h-3.5" />
+              VIP Member
+            </span>
+          )}
+        </div>
+        <h1 className="text-3xl sm:text-4xl font-extrabold font-display tracking-tight text-[#F5F5F5]">
           My Profile
         </h1>
-        <p className="text-[#A1A1AA] text-sm md:text-[15px]">
-          Manage your account, vehicles and payment preferences.
+        <p className="text-[#A1A1AA] text-sm sm:text-[15px] max-w-2xl leading-relaxed">
+          Manage your personal account, vehicles, bookings, and preferences.
         </p>
       </div>
 
-      {/* SECTION 1: Profile Overview & Loyalty Points */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Profile Card (2 cols) */}
-        <div className="lg:col-span-2 bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between shadow-lg">
-          {/* Subtle Ambient Top Accent */}
-          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent"></div>
+      {/* ─── 2. SECTION 1: PROFILE OVERVIEW & LOYALTY REWARDS ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* Left: Profile Overview Card (7 cols) */}
+        <div className="lg:col-span-7 bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-7 flex flex-col justify-between shadow-lg relative overflow-hidden group hover:border-[#3C3C3C] transition-all">
+          {/* Subtle Top Accent */}
+          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#FFA26B] to-transparent" />
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-            {/* Avatar with Upload */}
-            <div className="relative group/avatar shrink-0">
-              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-2 border-[#2C2C2C] group-hover/avatar:border-[#E86A33] transition-colors bg-[#101010] shadow-md">
-                <img
-                  src={profileAvatar}
-                  alt={profileName}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-1 right-1 w-8 h-8 rounded-full bg-[#E86A33] text-white flex items-center justify-center shadow-md hover:bg-[#cc5a2a] transition-all hover:scale-105 active:scale-95"
-                title="Change profile photo"
-                aria-label="Change profile photo"
-              >
-                <Camera className="w-4 h-4" />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleAvatarChange}
-              />
-            </div>
-
-            {/* Information */}
-            <div className="flex-1 min-w-0 flex flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl sm:text-2xl font-bold font-display text-[#F5F5F5] truncate">
-                  {profileName}
-                </h2>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Verified
-                </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#E86A33]/15 text-[#E86A33] border border-[#E86A33]/30">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Premium Support
-                </span>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs sm:text-sm text-[#A1A1AA]">
-                <span className="flex items-center gap-1.5 truncate">
-                  <Mail className="w-4 h-4 text-[#71717A]" />
-                  {profileEmail}
-                </span>
-                <span className="text-[#3F3F46] hidden sm:inline">•</span>
-                <span className="truncate">{profilePhone}</span>
-              </div>
-
-              {/* Membership details */}
-              <div className="flex flex-wrap items-center gap-4 mt-2 pt-3 border-t border-[#2C2C2C]/80">
-                {hasMembership ? (
-                  <>
-                    <div>
-                      <p className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
-                        Membership
-                      </p>
-                      <p className="text-sm font-semibold text-[#E86A33] flex items-center gap-1 mt-0.5">
-                        <Crown className="w-4 h-4" />
-                        Diamond Elite
-                      </p>
+          <div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+              {/* Avatar + Main Details */}
+              <div className="flex items-center gap-4">
+                <div className="relative group/avatar">
+                  {profileAvatar ? (
+                    <img
+                      src={profileAvatar}
+                      alt={profileName}
+                      className="w-20 h-20 rounded-2xl object-cover border-2 border-[#E86A33] shadow-md bg-[#101010]"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#E86A33] to-[#FFA26B] flex items-center justify-center text-white font-extrabold text-2xl font-display shadow-md">
+                      {getInitials(profileName)}
                     </div>
+                  )}
 
-                    <div className="h-7 w-px bg-[#2C2C2C]"></div>
+                  {/* Upload Avatar Overlay Button */}
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/png, image/jpeg, image/jpg"
+                    onChange={handleAvatarFileChange}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="absolute -bottom-1 -right-1 p-1.5 rounded-lg bg-[#1F1F1F] border border-[#2C2C2C] text-[#A1A1AA] hover:text-[#E86A33] hover:border-[#E86A33] transition-colors shadow-lg cursor-pointer"
+                    title="Change Profile Photo"
+                    aria-label="Change Profile Photo"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                  </button>
+                </div>
 
-                    <div>
-                      <p className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
-                        Member Since
-                      </p>
-                      <p className="text-sm font-medium text-[#F5F5F5] mt-0.5">
-                        March 2026
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
-                        Membership
-                      </p>
-                      <p className="text-sm font-medium text-[#A1A1AA] flex items-center gap-1.5 mt-0.5">
-                        <ShieldCheck className="w-4 h-4 text-[#71717A]" />
-                        No active membership
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => navigate("/dashboard/customer/membership")}
-                      className="ml-2 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#E86A33]/15 text-[#E86A33] hover:bg-[#E86A33]/25 border border-[#E86A33]/30 transition-colors"
-                    >
-                      Upgrade
-                    </button>
+                <div className="flex flex-col">
+                  <h2 className="text-xl sm:text-2xl font-bold font-display text-[#F5F5F5] tracking-tight">
+                    {profileName}
+                  </h2>
+                  <div className="flex items-center gap-2 text-xs text-[#A1A1AA] mt-1">
+                    <Mail className="w-3.5 h-3.5 text-[#71717A]" />
+                    <span className="truncate max-w-[200px] sm:max-w-none">
+                      {currentUser?.email || "customer@washwizzy.com"}
+                    </span>
                   </div>
-                )}
+                  {profilePhone ? (
+                    <div className="flex items-center gap-2 text-xs text-[#A1A1AA] mt-0.5">
+                      <Phone className="w-3.5 h-3.5 text-[#71717A]" />
+                      <span>{profilePhone}</span>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-[#71717A] mt-0.5">
+                      No phone number added
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Action Row */}
-          <div className="mt-6 pt-4 border-t border-[#2C2C2C] flex items-center justify-end">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setEditFormName(profileName);
-                setEditFormPhone(profilePhone);
-                setIsEditProfileOpen(true);
-              }}
-              className="text-xs sm:text-sm py-2 px-4 !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33]"
-            >
-              <Edit2 className="w-4 h-4" />
-              Edit Profile
-            </Button>
+              {/* Edit Profile Button */}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditName(profileName);
+                  setEditPhone(profilePhone);
+                  setIsEditProfileOpen(true);
+                }}
+                className="text-xs py-2 px-4 !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33] self-start sm:self-auto"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                Edit Details
+              </Button>
+            </div>
+
+            {/* Membership Summary Banner inside Profile Card */}
+            <div className="mt-6 pt-5 border-t border-[#2C2C2C] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#101010]/80 p-4 rounded-xl border border-[#2C2C2C]/60">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#E86A33]/15 border border-[#E86A33]/30 flex items-center justify-center text-[#E86A33] shrink-0">
+                  <Crown className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold font-display text-[#F5F5F5]">
+                      {hasMembership ? "Diamond Elite Membership" : "Free Tier"}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        hasMembership
+                          ? "bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30"
+                          : "bg-[#1F1F1F] text-[#A1A1AA] border border-[#2C2C2C]"
+                      }`}
+                    >
+                      {hasMembership ? "Active" : "Standard"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#A1A1AA] mt-0.5">
+                    {hasMembership
+                      ? "Zero call-out fees, 20% savings & 1.5x rewards."
+                      : "Upgrade for unlimited free call-outs & VIP savings."}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => navigate("/dashboard/customer/membership")}
+                className="text-xs font-semibold text-[#E86A33] hover:text-[#FFA26B] transition-colors flex items-center gap-1 self-start sm:self-auto shrink-0 cursor-pointer"
+              >
+                {hasMembership ? "Manage Membership" : "Upgrade to VIP"}
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Loyalty Points Card (1 col) */}
-        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 flex flex-col justify-between shadow-lg relative overflow-hidden">
-          {/* Green Glow */}
-          <div
-            className="absolute top-0 right-0 w-32 h-32 pointer-events-none rounded-full"
-            style={{
-              background:
-                "radial-gradient(circle, rgba(53,184,107,0.12) 0%, transparent 70%)",
-            }}
-          ></div>
+        {/* Right: Loyalty Points Card (5 cols) */}
+        <div className="lg:col-span-5 bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-7 flex flex-col justify-between shadow-lg relative overflow-hidden group hover:border-[#3C3C3C] transition-all">
+          {/* Top Green Accent */}
+          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#35B86B] via-[#35B86B]/40 to-transparent" />
 
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#A1A1AA] flex items-center gap-1.5">
+              <span className="text-xs font-bold uppercase tracking-widest text-[#71717A] flex items-center gap-1.5">
                 <Award className="w-4 h-4 text-[#35B86B]" />
-                Loyalty Points
+                Loyalty Balance
               </span>
-              <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${currentTierObj.badgeColor}`}>
-                {currentTierObj.name} (Tier {currentTierObj.level})
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${currentTierObj.badgeColor}`}
+              >
+                {currentTierObj.name} Tier
               </span>
             </div>
 
             <div className="mt-4">
               <div className="flex items-baseline gap-1.5">
-                <span className="text-4xl font-extrabold font-display text-[#F5F5F5] tracking-tight">
+                <span className="text-4xl sm:text-5xl font-black font-display text-[#F5F5F5] tracking-tight">
                   {rewardsSummary.pointsBalance.toLocaleString()}
                 </span>
-                <span className="text-xs text-[#35B86B] font-bold">PTS</span>
+                <span className="text-sm text-[#35B86B] font-bold">PTS</span>
               </div>
               <p className="text-xs text-[#A1A1AA] mt-1">
-                Total Earned: <strong className="text-[#F5F5F5]">{rewardsSummary.lifetimePoints.toLocaleString()} PTS</strong>
+                Lifetime Points Earned:{" "}
+                <strong className="text-[#F5F5F5]">
+                  {rewardsSummary.lifetimePoints.toLocaleString()} PTS
+                </strong>
               </p>
             </div>
 
-            {/* Next Tier Progress */}
-            <div className="mt-6 bg-[#101010] p-3.5 rounded-xl border border-[#2C2C2C]">
+            {/* Next Tier Progress Bar */}
+            <div className="mt-5 bg-[#101010] p-3.5 rounded-xl border border-[#2C2C2C]">
               <div className="flex justify-between items-center text-xs mb-2">
                 <span className="font-semibold text-[#F5F5F5]">
                   {tierProgress.isHighestTier ? (
-                    'Maximum Tier Achieved'
+                    "Maximum Tier Achieved"
                   ) : (
-                    <>Next Tier: <span className="text-[#E86A33]">{nextTierObj?.name}</span></>
+                    <>
+                      Next Tier:{" "}
+                      <span className="text-[#E86A33]">{nextTierObj?.name}</span>
+                    </>
                   )}
                 </span>
-                <span className="text-[#35B86B] font-medium">
+                <span className="text-[#35B86B] font-semibold text-[11px]">
                   {tierProgress.isHighestTier
-                    ? 'All perks unlocked'
+                    ? "All perks unlocked"
                     : `${tierProgress.pointsToNext.toLocaleString()} pts to go`}
                 </span>
               </div>
-              {/* Progress Bar */}
               <div className="w-full h-2.5 bg-[#1F1F1F] rounded-full overflow-hidden p-0.5 border border-[#2C2C2C]">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#E86A33] via-[#35B86B] to-[#35B86B] transition-all duration-500"
+                  className="h-full rounded-full bg-gradient-to-r from-[#E86A33] to-[#35B86B] transition-all duration-500"
                   style={{ width: `${tierProgress.progressPercent}%` }}
-                ></div>
-              </div>
-              <div className="flex justify-between items-center text-[10px] text-[#71717A] mt-1.5 font-medium">
-                <span>{currentTierObj.name} ({currentTierObj.minPoints.toLocaleString()} PTS)</span>
-                <span>
-                  {nextTierObj ? `${nextTierObj.name} (${nextTierObj.minPoints.toLocaleString()} PTS)` : 'Ultimate (3,000+ PTS)'}
-                </span>
+                />
               </div>
             </div>
           </div>
 
-          <div className="mt-6 pt-3">
-            <button
-              onClick={() => navigate('/dashboard/customer/rewards')}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold bg-[#35B86B]/15 text-[#35B86B] hover:bg-[#35B86B]/25 border border-[#35B86B]/30 transition-all active:scale-[0.98] cursor-pointer"
+          <div className="mt-5 pt-3 border-t border-[#2C2C2C]">
+            <Button
+              variant="outline"
+              fullWidth
+              onClick={() => navigate("/dashboard/customer/rewards")}
+              className="py-2.5 text-xs font-semibold !border-[#2C2C2C] hover:!border-[#35B86B] hover:!text-[#35B86B] flex items-center justify-center gap-2"
             >
-              Redeem Rewards
-              <ArrowRight className="w-4 h-4" />
-            </button>
+              <Award className="w-4 h-4 text-[#35B86B]" />
+              View Rewards & Vouchers
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
           </div>
         </div>
       </div>
 
-      {/* SECTION 2: My Vehicles & Quick Book */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* My Vehicles (2 cols) */}
-        <div className="lg:col-span-2 bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 flex flex-col shadow-lg">
-          {/* Header */}
+      {/* ─── 3. SECTION 2: MY VEHICLES & QUICK SHORTCUTS ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left: My Vehicles (8 cols) */}
+        <div className="lg:col-span-8 bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-7 flex flex-col shadow-lg">
           <div className="flex items-center justify-between pb-4 border-b border-[#2C2C2C]">
             <div className="flex items-center gap-2.5">
               <Car className="w-5 h-5 text-[#E86A33]" />
@@ -652,11 +751,8 @@ export default function CustomerProfile() {
             </div>
             <Button
               variant="primary"
-              onClick={() => {
-                resetVehicleForm();
-                setIsAddVehicleOpen(true);
-              }}
-              className="text-xs sm:text-sm py-2 px-3.5"
+              onClick={openAddVehicleModal}
+              className="text-xs py-2 px-3.5 shadow-md shadow-[#E86A33]/20"
             >
               <Plus className="w-4 h-4" />
               Add Vehicle
@@ -664,477 +760,535 @@ export default function CustomerProfile() {
           </div>
 
           {/* Vehicle Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
-            {vehicles.map((v) => (
-              <div
-                key={v.id}
-                className="bg-[#101010] border border-[#2C2C2C] hover:border-[#E86A33]/40 rounded-xl p-4.5 flex flex-col justify-between transition-all group"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-10 h-10 rounded-xl bg-[#1F1F1F] border border-[#2C2C2C] flex items-center justify-center shrink-0 text-[#E86A33]">
-                        <Car className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
+          {vehicles.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+              {vehicles.map((v) => (
+                <div
+                  key={v.id}
+                  className="bg-[#101010] border border-[#2C2C2C] hover:border-[#E86A33]/50 rounded-xl p-4 flex flex-col justify-between transition-all group shadow-sm"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-[#1F1F1F] border border-[#2C2C2C] flex items-center justify-center shrink-0 text-[#E86A33]">
+                          <Car className="w-5 h-5" />
+                        </div>
+                        <div>
                           <span className="font-mono text-xs font-bold tracking-wider px-2 py-0.5 rounded bg-[#1F1F1F] text-[#F5F5F5] border border-[#2C2C2C]">
                             {v.plate}
                           </span>
+                          <h3 className="font-bold text-sm text-[#F5F5F5] mt-1 group-hover:text-[#E86A33] transition-colors">
+                            {v.make} {v.model}
+                          </h3>
                         </div>
-                        <h3 className="font-bold text-sm text-[#F5F5F5] mt-1 group-hover:text-[#E86A33] transition-colors">
-                          {v.make} {v.model}
-                        </h3>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => openEditVehicleModal(v)}
+                          className="p-1.5 rounded-lg text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.06] transition-colors"
+                          title="Edit Vehicle"
+                          aria-label="Edit Vehicle"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeletingVehicle(v)}
+                          className="p-1.5 rounded-lg text-[#71717A] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          title="Delete Vehicle"
+                          aria-label="Delete Vehicle"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => openEditVehicleModal(v)}
-                        className="p-1.5 rounded-lg text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.06] transition-colors"
-                        title="Edit Vehicle"
-                        aria-label="Edit Vehicle"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setVehicleToDelete(v)}
-                        className="p-1.5 rounded-lg text-[#71717A] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                        title="Delete Vehicle"
-                        aria-label="Delete Vehicle"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
+                    <div className="mt-3.5 flex flex-col gap-1.5 text-xs text-[#A1A1AA]">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-[#E86A33]" />
+                        <span className="text-[#71717A]">Colour:</span>
+                        <span className="font-medium text-[#D8D5CF]">{v.color}</span>
+                      </div>
 
-                  <div className="mt-3 flex flex-col gap-1.5 text-xs text-[#A1A1AA]">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-[#E86A33]"></span>
-                      <span className="text-[#71717A]">Colour:</span>
-                      <span className="font-medium text-[#D8D5CF]">{v.color}</span>
-                    </div>
-
-                    <div className="mt-2 pt-2 border-t border-[#1F1F1F] flex items-center justify-between">
-                      <span className="text-[11px] text-[#71717A]">
-                        Preferred Package:
-                      </span>
-                      <span className="text-[11px] font-semibold text-[#E86A33] truncate max-w-[140px]">
-                        {v.preferredPackage}
-                      </span>
+                      <div className="mt-2 pt-2 border-t border-[#1F1F1F] flex items-center justify-between">
+                        <span className="text-[11px] text-[#71717A]">
+                          Preferred Package:
+                        </span>
+                        <span className="text-[11px] font-semibold text-[#E86A33] truncate max-w-[150px]">
+                          {v.preferredPackage || "Express Wash"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-10 flex flex-col items-center justify-center text-center text-[#71717A] border border-dashed border-[#2C2C2C] rounded-xl mt-5">
+              <div className="w-12 h-12 rounded-xl bg-[#1F1F1F] border border-[#2C2C2C] flex items-center justify-center text-[#71717A] mb-3">
+                <Car className="w-6 h-6 text-[#E86A33]" />
               </div>
-            ))}
-
-            {vehicles.length === 0 && (
-              <div className="md:col-span-2 py-8 flex flex-col items-center justify-center text-center text-[#71717A] border border-dashed border-[#2C2C2C] rounded-xl">
-                <Car className="w-8 h-8 mb-2 opacity-50" />
-                <p className="text-sm font-medium text-[#A1A1AA]">No vehicles added yet</p>
-                <p className="text-xs text-[#71717A] mt-0.5">
-                  Add your primary car to enable instant 1-click booking.
-                </p>
-              </div>
-            )}
-          </div>
+              <p className="text-sm font-semibold text-[#F5F5F5]">
+                No vehicles added yet
+              </p>
+              <p className="text-xs text-[#71717A] mt-1 max-w-xs">
+                Add your vehicle details once to enjoy automatic 1-click selection during booking.
+              </p>
+              <Button
+                variant="outline"
+                onClick={openAddVehicleModal}
+                className="mt-4 text-xs py-2 px-4 !border-[#2C2C2C] hover:!border-[#E86A33]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Your First Vehicle
+              </Button>
+            </div>
+          )}
         </div>
 
-        {/* Quick Book (1 col) */}
-        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 flex flex-col justify-between shadow-lg">
-          <div>
-            <div className="flex items-center gap-2 pb-3 border-b border-[#2C2C2C]">
-              <Sparkles className="w-4 h-4 text-[#E86A33]" />
-              <h2 className="text-lg font-bold font-display text-[#F5F5F5]">
-                Quick Book
-              </h2>
+        {/* Right: Quick Book & My Reviews (4 cols) */}
+        <div className="lg:col-span-4 flex flex-col gap-6">
+          {/* Quick Book Card */}
+          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 flex flex-col justify-between shadow-lg">
+            <div>
+              <div className="flex items-center gap-2 pb-3 border-b border-[#2C2C2C]">
+                <Sparkles className="w-4 h-4 text-[#E86A33]" />
+                <h2 className="text-base font-bold font-display text-[#F5F5F5]">
+                  Quick Book
+                </h2>
+              </div>
+              <p className="text-xs text-[#71717A] mt-2 mb-3">
+                Instant booking for our most popular car care packages.
+              </p>
+
+              {/* Service 1: Express Wash */}
+              <div className="flex flex-col gap-2.5">
+                <div className="bg-[#101010] border border-[#2C2C2C] hover:border-[#E86A33]/50 rounded-xl p-3 flex items-center justify-between transition-all">
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs text-[#F5F5F5]">
+                      Express Wash
+                    </span>
+                    <span className="text-[10px] text-[#71717A]">
+                      Quick exterior & wheel clean
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xs font-bold text-[#E86A33]">R75</span>
+                    <button
+                      onClick={() =>
+                        navigate("/dashboard/customer/booking", {
+                          state: { packageId: "express" },
+                        })
+                      }
+                      className="px-2.5 py-1 text-xs font-semibold bg-[#E86A33]/15 text-[#E86A33] hover:bg-[#E86A33] hover:text-white rounded-lg transition-colors cursor-pointer"
+                    >
+                      Book
+                    </button>
+                  </div>
+                </div>
+
+                {/* Service 2: Premium Wash */}
+                <div className="bg-[#101010] border border-[#2C2C2C] hover:border-[#E86A33]/50 rounded-xl p-3 flex items-center justify-between transition-all">
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs text-[#F5F5F5]">
+                      Premium Wash
+                    </span>
+                    <span className="text-[10px] text-[#35B86B]">
+                      Most Popular Detail
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xs font-bold text-[#E86A33]">R275</span>
+                    <button
+                      onClick={() =>
+                        navigate("/dashboard/customer/booking", {
+                          state: { packageId: "premium" },
+                        })
+                      }
+                      className="px-2.5 py-1 text-xs font-semibold bg-[#E86A33]/15 text-[#E86A33] hover:bg-[#E86A33] hover:text-white rounded-lg transition-colors cursor-pointer"
+                    >
+                      Book
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-[#71717A] mt-2 mb-4">
-              Instant re-booking for your most frequent services.
-            </p>
 
-            {/* Quick Service Cards */}
-            <div className="flex flex-col gap-3">
-              {/* Service 1 */}
-              <div className="bg-[#101010] border border-[#2C2C2C] hover:border-[#E86A33]/50 rounded-xl p-3.5 flex items-center justify-between transition-all">
-                <div className="flex flex-col">
-                  <span className="font-semibold text-xs sm:text-sm text-[#F5F5F5]">
-                    Ceramic Coating Pro
-                  </span>
-                  <span className="text-[11px] text-[#71717A]">
-                    Last booked 2 weeks ago
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-[#E86A33]">R120</span>
-                  <button
-                    onClick={() => navigate("/dashboard/customer/appointments")}
-                    className="px-2.5 py-1 text-xs font-semibold bg-[#E86A33]/15 text-[#E86A33] hover:bg-[#E86A33] hover:text-white rounded-lg transition-colors"
-                  >
-                    Book
-                  </button>
-                </div>
-              </div>
-
-              {/* Service 2 */}
-              <div className="bg-[#101010] border border-[#2C2C2C] hover:border-[#E86A33]/50 rounded-xl p-3.5 flex items-center justify-between transition-all">
-                <div className="flex flex-col">
-                  <span className="font-semibold text-xs sm:text-sm text-[#F5F5F5]">
-                    Full Interior Detail
-                  </span>
-                  <span className="text-[11px] text-[#35B86B]">
-                    Most popular add-on
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-[#E86A33]">R85</span>
-                  <button
-                    onClick={() => navigate("/dashboard/customer/appointments")}
-                    className="px-2.5 py-1 text-xs font-semibold bg-[#E86A33]/15 text-[#E86A33] hover:bg-[#E86A33] hover:text-white rounded-lg transition-colors"
-                  >
-                    Book
-                  </button>
-                </div>
-              </div>
+            <div className="mt-4 pt-3 border-t border-[#2C2C2C]">
+              <Button
+                variant="outline"
+                fullWidth
+                onClick={() => navigate("/dashboard/customer/packages")}
+                className="text-xs py-2 !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33]"
+              >
+                View All Wash Packages
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Button>
             </div>
           </div>
 
-          <div className="mt-5 pt-4 border-t border-[#2C2C2C]">
-            <Button
-              variant="outline"
-              fullWidth
-              onClick={() => navigate("/dashboard/customer/appointments")}
-              className="text-xs sm:text-sm py-2.5 !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33]"
-            >
-              Explore All Services
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+          {/* My Reviews Card */}
+          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 flex flex-col justify-between shadow-lg relative overflow-hidden group hover:border-[#E86A33]/40 transition-all">
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-[#2C2C2C]">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-[#E86A33]" />
+                  <h2 className="text-base font-bold font-display text-[#F5F5F5]">
+                    My Reviews
+                  </h2>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#1F1F1F] text-[#A1A1AA] border border-[#2C2C2C]">
+                  {reviewStats.totalReviews}
+                </span>
+              </div>
+
+              {reviewStats.totalReviews > 0 ? (
+                <div className="mt-3.5 flex flex-col gap-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-black font-display text-[#F5F5F5]">
+                      {reviewStats.averageRatingDisplay}
+                    </span>
+                    <span className="text-xs text-[#71717A] font-medium">/ 5.0</span>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={`w-3.5 h-3.5 ${
+                          star <= Math.round(reviewStats.averageRating)
+                            ? "text-[#E86A33] fill-[#E86A33]"
+                            : "text-[#2C2C2C] fill-transparent"
+                        }`}
+                      />
+                    ))}
+                    <span className="text-xs text-[#A1A1AA] ml-1 font-medium">
+                      ({reviewStats.totalReviews}{" "}
+                      {reviewStats.totalReviews === 1 ? "Review" : "Reviews"})
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-[#71717A] mt-1 truncate">
+                    Most reviewed:{" "}
+                    <span className="text-[#D4D4D4] font-medium">
+                      {reviewStats.mostReviewedService}
+                    </span>
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-3.5 flex flex-col gap-1">
+                  <p className="text-sm font-semibold text-[#F5F5F5]">
+                    No reviews yet
+                  </p>
+                  <p className="text-xs text-[#71717A]">
+                    Share feedback on your washes to earn loyalty points.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-[#2C2C2C]">
+              <button
+                onClick={() => navigate("/dashboard/customer/reviews")}
+                className="w-full flex items-center justify-between text-xs font-semibold text-[#E86A33] hover:text-[#FFA26B] transition-colors py-1 cursor-pointer"
+              >
+                <span>
+                  {reviewStats.totalReviews > 0
+                    ? "View My Reviews"
+                    : "Write your first review"}
+                </span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* SECTION 3: Recent Bookings */}
-      <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 shadow-lg">
+      {/* ─── 4. SECTION 3: RECENT BOOKINGS (CONNECTED TO REAL APPOINTMENTS) ─── */}
+      <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-7 shadow-lg">
         <div className="flex items-center justify-between pb-4 border-b border-[#2C2C2C]">
           <div className="flex items-center gap-2.5">
             <Calendar className="w-5 h-5 text-[#E86A33]" />
             <h2 className="text-lg font-bold font-display text-[#F5F5F5]">
               Recent Bookings
             </h2>
+            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#1F1F1F] text-[#A1A1AA] border border-[#2C2C2C]">
+              {appointments.length}
+            </span>
           </div>
-          <button
-            onClick={() => navigate("/dashboard/customer/appointments")}
-            className="text-xs sm:text-sm font-semibold text-[#E86A33] hover:underline flex items-center gap-1"
-          >
-            View All
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Bookings Table / Responsive List */}
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-[#2C2C2C] text-[11px] uppercase tracking-wider text-[#71717A]">
-                <th className="py-3 px-3">Service & Date</th>
-                <th className="py-3 px-3 hidden md:table-cell">Vehicle</th>
-                <th className="py-3 px-3">Status</th>
-                <th className="py-3 px-3">Payment</th>
-                <th className="py-3 px-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#2C2C2C] text-xs sm:text-sm">
-              {INITIAL_BOOKINGS.map((b) => (
-                <tr
-                  key={b.id}
-                  className="hover:bg-white/[0.02] transition-colors group"
-                >
-                  {/* Service & Date */}
-                  <td className="py-3.5 px-3">
-                    <div className="font-semibold text-[#F5F5F5]">{b.service}</div>
-                    <div className="text-xs text-[#71717A] flex items-center gap-1 mt-0.5">
-                      <Clock className="w-3 h-3 text-[#E86A33]" />
-                      {b.date} • {b.time}
-                    </div>
-                  </td>
-
-                  {/* Vehicle */}
-                  <td className="py-3.5 px-3 hidden md:table-cell text-[#A1A1AA]">
-                    {b.vehicle}
-                  </td>
-
-                  {/* Status Badge */}
-                  <td className="py-3.5 px-3">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                        b.status === "Completed"
-                          ? "bg-[#35B86B]/15 text-[#35B86B] border-[#35B86B]/30"
-                          : b.status === "Upcoming"
-                          ? "bg-[#E86A33]/15 text-[#E86A33] border-[#E86A33]/30"
-                          : b.status === "Staff on route"
-                          ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
-                          : "bg-red-500/15 text-red-400 border-red-500/30"
-                      }`}
-                    >
-                      {b.status}
-                    </span>
-                  </td>
-
-                  {/* Payment */}
-                  <td className="py-3.5 px-3">
-                    <div className="font-bold text-[#F5F5F5]">{b.amount}</div>
-                    {b.isRefunded && (
-                      <span className="text-[10px] text-[#E86A33] font-medium">
-                        Refunded
-                      </span>
-                    )}
-                  </td>
-
-                  {/* Contextual Action */}
-                  <td className="py-3.5 px-3 text-right">
-                    {b.status === "Completed" && (
-                      <button
-                        onClick={() => setActiveReceipt(b)}
-                        className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium bg-[#1F1F1F] text-[#F5F5F5] hover:bg-[#2C2C2C] hover:text-[#E86A33] transition-colors border border-[#2C2C2C]"
-                      >
-                        <Receipt className="w-3.5 h-3.5" />
-                        Receipt
-                      </button>
-                    )}
-
-                    {(b.status === "Upcoming" || b.status === "Staff on route") && (
-                      <button
-                        onClick={() =>
-                          navigate("/dashboard/customer/appointments/reschedule")
-                        }
-                        className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium bg-[#E86A33]/15 text-[#E86A33] hover:bg-[#E86A33] hover:text-white transition-colors"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        Reschedule
-                      </button>
-                    )}
-
-                    {b.status === "Cancelled" && (
-                      <button
-                        onClick={() => setActiveReceipt(b)}
-                        className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium bg-[#1F1F1F] text-[#71717A] hover:text-[#F5F5F5] hover:bg-[#2C2C2C] transition-colors border border-[#2C2C2C]"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        Details
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* SECTION 4: Payments & Transactions */}
-      <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 shadow-lg flex flex-col gap-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#2C2C2C]">
-          <div>
-            <h2 className="text-lg font-bold font-display text-[#F5F5F5]">
-              Payments & Transactions
-            </h2>
-            <p className="text-xs text-[#71717A] mt-0.5">
-              Secure billing methods and automatic receipts.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
+          {appointments.length > 0 && (
             <button
-              onClick={() => {
-                showToast(
-                  "All past refunds are credited back to your original payment method.",
-                  "info"
-                );
-              }}
-              className="text-xs font-semibold text-[#A1A1AA] hover:text-[#F5F5F5] transition-colors px-3 py-2 rounded-lg border border-[#2C2C2C] hover:bg-white/[0.04]"
+              onClick={() => navigate("/dashboard/customer/appointments")}
+              className="text-xs sm:text-sm font-semibold text-[#E86A33] hover:underline flex items-center gap-1 cursor-pointer"
             >
-              Refund Requests
+              View All Appointments
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
+          )}
+        </div>
+
+        {appointments.length > 0 ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-[#2C2C2C] text-[11px] uppercase tracking-wider text-[#71717A]">
+                  <th className="py-3 px-3">Service & Date</th>
+                  <th className="py-3 px-3 hidden sm:table-cell">Vehicle</th>
+                  <th className="py-3 px-3">Status</th>
+                  <th className="py-3 px-3">Amount</th>
+                  <th className="py-3 px-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#2C2C2C] text-xs sm:text-sm">
+                {appointments.slice(0, 5).map((appt) => {
+                  const isCancelled = appt.status === "Cancelled";
+                  const isCompleted = appt.status === "Completed";
+                  const isWaiting = appt.status === "Waiting Confirmation";
+
+                  return (
+                    <tr
+                      key={appt.id}
+                      className="hover:bg-white/[0.02] transition-colors"
+                    >
+                      <td className="py-3.5 px-3">
+                        <div className="font-semibold text-[#F5F5F5]">
+                          {appt.packageName}
+                        </div>
+                        <div className="text-[11px] text-[#71717A] flex items-center gap-1.5 mt-0.5">
+                          <Clock className="w-3 h-3 text-[#E86A33]" />
+                          {appt.date} • {appt.time}
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-3 hidden sm:table-cell text-[#D8D5CF]">
+                        {appt.vehicle || "Customer Vehicle"}
+                      </td>
+
+                      <td className="py-3.5 px-3">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                            isCompleted
+                              ? "bg-[#35B86B]/15 text-[#35B86B] border-[#35B86B]/30"
+                              : isCancelled
+                              ? "bg-red-500/15 text-red-400 border-red-500/30"
+                              : isWaiting
+                              ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                              : "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                          }`}
+                        >
+                          {appt.status}
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 px-3 font-semibold text-[#F5F5F5]">
+                        {appt.price}
+                      </td>
+
+                      <td className="py-3.5 px-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {isCompleted ? (
+                            <button
+                              onClick={() => setViewingReceipt(appt)}
+                              className="text-xs font-semibold text-[#35B86B] hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <Receipt className="w-3 h-3" />
+                              Receipt
+                            </button>
+                          ) : !isCancelled ? (
+                            <button
+                              onClick={() =>
+                                navigate(
+                                  "/dashboard/customer/appointments/reschedule",
+                                  { state: { appointment: appt } }
+                                )
+                              }
+                              className="text-xs font-semibold text-[#E86A33] hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              Reschedule
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-[#71717A]">
+                              Cancelled
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="py-10 flex flex-col items-center justify-center text-center text-[#71717A] border border-dashed border-[#2C2C2C] rounded-xl mt-4">
+            <div className="w-12 h-12 rounded-xl bg-[#1F1F1F] border border-[#2C2C2C] flex items-center justify-center text-[#71717A] mb-3">
+              <Calendar className="w-6 h-6 text-[#E86A33]" />
+            </div>
+            <p className="text-sm font-semibold text-[#F5F5F5]">
+              No bookings yet
+            </p>
+            <p className="text-xs text-[#71717A] mt-1 max-w-xs">
+              Book your first mobile wash or drive-in detail to see your real appointment schedule here.
+            </p>
             <Button
               variant="primary"
-              onClick={() => setIsAddCardOpen(true)}
-              className="text-xs sm:text-sm py-2 px-3.5"
+              onClick={() => navigate("/dashboard/customer/booking")}
+              className="mt-4 text-xs py-2 px-4 shadow-md shadow-[#E86A33]/20"
             >
-              <CreditCard className="w-4 h-4" />
-              Add Payment Method
+              Book a Wash Now
+              <ArrowRight className="w-3.5 h-3.5" />
             </Button>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Primary Payment Card (1 col) */}
-          <div className="bg-gradient-to-br from-[#1F1F1F] via-[#171717] to-[#101010] border border-[#2C2C2C] rounded-xl p-5 flex flex-col justify-between shadow-md relative overflow-hidden">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#E86A33]">
-                  PRIMARY CARD
-                </span>
-                <p className="text-xs text-[#71717A] mt-0.5">WashWizzy Preferred</p>
-              </div>
-              <CreditCard className="w-6 h-6 text-[#E86A33]" />
-            </div>
-
-            {/* Masked Card Number */}
-            <div className="my-6">
-              <p className="font-mono text-base sm:text-lg tracking-widest text-[#F5F5F5] font-semibold">
-                •••• •••• •••• 4242
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between text-xs text-[#A1A1AA] pt-3 border-t border-[#2C2C2C]">
-              <div>
-                <span className="text-[9px] uppercase tracking-wider text-[#71717A] block">
-                  Cardholder
-                </span>
-                <span className="font-medium text-[#F5F5F5]">{profileName}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-[9px] uppercase tracking-wider text-[#71717A] block">
-                  Expires
-                </span>
-                <span className="font-medium text-[#F5F5F5]">12/26</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Transactions List (2 cols) */}
-          <div className="lg:col-span-2 flex flex-col gap-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#71717A]">
-              Recent Activity
-            </h3>
-
-            <div className="flex flex-col gap-2.5">
-              {INITIAL_TRANSACTIONS.map((t) => (
-                <div
-                  key={t.id}
-                  className="bg-[#101010] border border-[#2C2C2C] hover:border-[#2C2C2C]/80 rounded-xl p-3.5 flex items-center justify-between transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        t.type === "refund"
-                          ? "bg-[#E86A33]/15 text-[#E86A33]"
-                          : "bg-[#35B86B]/15 text-[#35B86B]"
-                      }`}
-                    >
-                      {t.type === "refund" ? (
-                        <RotateCcw className="w-4 h-4" />
-                      ) : (
-                        <DollarSign className="w-4 h-4" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-xs sm:text-sm font-semibold text-[#F5F5F5]">
-                        {t.title}
-                      </p>
-                      <p className="text-[11px] text-[#71717A]">
-                        {t.date} • Card ending in {t.cardLast4}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p
-                        className={`text-xs sm:text-sm font-bold ${
-                          t.type === "refund"
-                            ? "text-[#E86A33]"
-                            : "text-[#F5F5F5]"
-                        }`}
-                      >
-                        {t.type === "refund" ? `+${t.amount}` : t.amount}
-                      </p>
-                      <span className="text-[10px] text-[#35B86B] font-medium">
-                        {t.status}
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={() => setActiveTransaction(t)}
-                      className="p-1.5 rounded-lg text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.05] transition-colors"
-                      title="View Transaction Details"
-                      aria-label="View Transaction Details"
-                    >
-                      <FileText className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* --- MODALS --- */}
+      {/* ─── 5. SECTION 4: ACCOUNT & PAYMENT METHODS ─── */}
+      <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-7 shadow-lg">
+        <div className="flex items-center justify-between pb-4 border-b border-[#2C2C2C]">
+          <div className="flex items-center gap-2.5">
+            <CreditCard className="w-5 h-5 text-[#E86A33]" />
+            <h2 className="text-lg font-bold font-display text-[#F5F5F5]">
+              Saved Payment Methods
+            </h2>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setCardHolder(profileName);
+              setCardNumber("");
+              setCardExpiry("");
+              setCardCvv("");
+              setCardErrors({});
+              setIsPaymentModalOpen(true);
+            }}
+            className="text-xs py-2 px-3.5 !border-[#2C2C2C] hover:!border-[#E86A33]"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Payment Method
+          </Button>
+        </div>
 
-      {/* 1. Edit Profile Modal */}
+        {paymentMethods.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-5">
+            {paymentMethods.map((pm) => (
+              <div
+                key={pm.id}
+                className="bg-[#101010] border border-[#2C2C2C] hover:border-[#E86A33]/40 rounded-xl p-4 flex flex-col justify-between shadow-sm transition-all"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-lg bg-[#1F1F1F] border border-[#2C2C2C] flex items-center justify-center text-[#E86A33]">
+                      <CreditCard className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-[#F5F5F5] uppercase tracking-wider">
+                        {pm.cardBrand} •••• {pm.last4}
+                      </span>
+                      <p className="text-[11px] text-[#71717A] mt-0.5">
+                        Expires {pm.expiry}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setDeletingPaymentId(pm.id)}
+                    className="p-1.5 rounded-lg text-[#71717A] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title="Remove Card"
+                    aria-label="Remove Card"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="mt-3 pt-2 border-t border-[#1F1F1F] flex items-center justify-between text-[11px]">
+                  <span className="text-[#71717A] truncate max-w-[130px]">
+                    {pm.cardHolder}
+                  </span>
+                  {pm.isDefault && (
+                    <span className="text-[10px] font-bold uppercase text-[#35B86B] bg-[#35B86B]/15 px-1.5 py-0.5 rounded border border-[#35B86B]/30">
+                      Default
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="py-8 flex flex-col items-center justify-center text-center text-[#71717A] border border-dashed border-[#2C2C2C] rounded-xl mt-4">
+            <CreditCard className="w-8 h-8 text-[#71717A] mb-2 opacity-60" />
+            <p className="text-sm font-semibold text-[#F5F5F5]">
+              No payment method saved
+            </p>
+            <p className="text-xs text-[#71717A] mt-0.5">
+              Securely save your card for 1-click checkout on future washes.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ─── 6. MODALS ─── */}
+
+      {/* Modal 1: Edit Profile */}
       {isEditProfileOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-4 border-b border-[#2C2C2C]">
-              <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
-                Edit Profile
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col gap-5 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] to-[#FFA26B]" />
+
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
+                  Edit Profile Details
+                </h3>
+                <p className="text-xs text-[#A1A1AA]">
+                  Update your contact information
+                </p>
+              </div>
               <button
                 onClick={() => setIsEditProfileOpen(false)}
-                className="text-[#71717A] hover:text-[#F5F5F5] p-1 rounded-lg"
+                className="text-[#71717A] hover:text-[#F5F5F5] p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors"
+                aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveProfile} className="flex flex-col gap-4 mt-5">
+            <form onSubmit={handleSaveProfile} className="flex flex-col gap-4">
               <Input
                 label="Full Name *"
-                value={editFormName}
-                onChange={(e) => setEditFormName(e.target.value)}
-                placeholder="Your full name"
+                placeholder="e.g. Alex Burns"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
                 icon={<User className="w-4 h-4" />}
                 required
               />
 
               <Input
                 label="Phone Number"
-                value={editFormPhone}
-                onChange={(e) => setEditFormPhone(e.target.value)}
-                placeholder="+27 82 123 4567"
+                placeholder="e.g. +27 82 123 4567"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                icon={<Phone className="w-4 h-4" />}
               />
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-soft-gray ml-1">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  value={profileEmail}
-                  disabled
-                  className="w-full bg-[#101010] border border-[#2C2C2C] text-[#71717A] rounded-lg px-4 py-3 cursor-not-allowed text-sm"
-                />
-                <span className="text-[11px] text-[#71717A] ml-1">
-                  Email linked to your authentication account.
-                </span>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 mt-4 pt-4 border-t border-[#2C2C2C]">
+              <div className="flex items-center gap-3 pt-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setIsEditProfileOpen(false)}
-                  className="text-xs sm:text-sm py-2.5 px-4 !border-[#2C2C2C]"
+                  disabled={isSavingProfile}
+                  className="flex-1 py-2.5 text-xs !border-[#2C2C2C]"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   variant="primary"
-                  className="text-xs sm:text-sm py-2.5 px-5"
+                  isLoading={isSavingProfile}
+                  className="flex-1 py-2.5 text-xs font-semibold"
                 >
-                  Save Changes
+                  Save Details
                 </Button>
               </div>
             </form>
@@ -1142,92 +1296,115 @@ export default function CustomerProfile() {
         </div>
       )}
 
-      {/* 2. Add Vehicle Modal */}
-      {isAddVehicleOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-4 border-b border-[#2C2C2C]">
-              <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
-                Add New Vehicle
-              </h3>
+      {/* Modal 2: Add / Edit Vehicle */}
+      {isVehicleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col gap-5 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] to-[#FFA26B]" />
+
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
+                  {editingVehicleId ? "Edit Vehicle" : "Add New Vehicle"}
+                </h3>
+                <p className="text-xs text-[#A1A1AA]">
+                  Save your car details for faster scheduling
+                </p>
+              </div>
               <button
-                onClick={() => setIsAddVehicleOpen(false)}
-                className="text-[#71717A] hover:text-[#F5F5F5] p-1 rounded-lg"
+                onClick={() => setIsVehicleModalOpen(false)}
+                className="text-[#71717A] hover:text-[#F5F5F5] p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors"
+                aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleAddVehicle} className="flex flex-col gap-4 mt-5">
-              <Input
-                label="Registration Number *"
-                value={vehiclePlate}
-                onChange={(e) => setVehiclePlate(e.target.value)}
-                placeholder="e.g. ABC-1234"
-                required
-              />
-
+            <form onSubmit={handleSaveVehicle} className="flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-3">
                 <Input
                   label="Make *"
-                  value={vehicleMake}
-                  onChange={(e) => setVehicleMake(e.target.value)}
-                  placeholder="e.g. Tesla"
+                  placeholder="e.g. BMW"
+                  value={vehMake}
+                  onChange={(e) => {
+                    setVehMake(e.target.value);
+                    if (vehErrors.make) setVehErrors((p) => ({ ...p, make: "" }));
+                  }}
+                  error={vehErrors.make}
                   required
                 />
                 <Input
                   label="Model *"
-                  value={vehicleModel}
-                  onChange={(e) => setVehicleModel(e.target.value)}
-                  placeholder="e.g. Model 3"
+                  placeholder="e.g. M4"
+                  value={vehModel}
+                  onChange={(e) => {
+                    setVehModel(e.target.value);
+                    if (vehErrors.model) setVehErrors((p) => ({ ...p, model: "" }));
+                  }}
+                  error={vehErrors.model}
                   required
                 />
               </div>
 
-              <Input
-                label="Colour"
-                value={vehicleColor}
-                onChange={(e) => setVehicleColor(e.target.value)}
-                placeholder="e.g. Metallic Silver"
-              />
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Licence Plate *"
+                  placeholder="e.g. CA 123 456"
+                  value={vehPlate}
+                  onChange={(e) => {
+                    setVehPlate(e.target.value);
+                    if (vehErrors.plate) setVehErrors((p) => ({ ...p, plate: "" }));
+                  }}
+                  error={vehErrors.plate}
+                  required
+                />
+                <Input
+                  label="Colour *"
+                  placeholder="e.g. Metallic Black"
+                  value={vehColor}
+                  onChange={(e) => {
+                    setVehColor(e.target.value);
+                    if (vehErrors.color) setVehErrors((p) => ({ ...p, color: "" }));
+                  }}
+                  error={vehErrors.color}
+                  required
+                />
+              </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-soft-gray ml-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-[#A1A1AA]">
                   Preferred Wash Package
                 </label>
                 <select
-                  value={vehiclePackage}
-                  onChange={(e) => setVehiclePackage(e.target.value)}
-                  className="w-full bg-[#101010] border border-[#2C2C2C] text-[#F5F5F5] rounded-lg px-4 py-3 outline-none focus:border-[#E86A33] text-sm"
+                  value={vehPreferredPackage}
+                  onChange={(e) => setVehPreferredPackage(e.target.value)}
+                  className="w-full bg-[#101010] border border-[#2C2C2C] focus:border-[#E86A33] text-[#F5F5F5] rounded-xl px-3.5 py-2.5 text-xs outline-none cursor-pointer"
                 >
-                  <option value="Standard Foam Wash">Standard Foam Wash</option>
-                  <option value="Exterior & Interior Deep Clean">
-                    Exterior & Interior Deep Clean
-                  </option>
-                  <option value="Ultimate Ceramic Wash">
-                    Ultimate Ceramic Wash
-                  </option>
-                  <option value="Ceramic Coating Pro">
-                    Ceramic Coating Pro
-                  </option>
+                  {PREFERRED_PACKAGES.map((pkg) => (
+                    <option key={pkg} value={pkg}>
+                      {pkg}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              <div className="flex items-center justify-end gap-3 mt-4 pt-4 border-t border-[#2C2C2C]">
+              <div className="flex items-center gap-3 pt-2">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsAddVehicleOpen(false)}
-                  className="text-xs sm:text-sm py-2.5 px-4 !border-[#2C2C2C]"
+                  onClick={() => setIsVehicleModalOpen(false)}
+                  disabled={isSavingVehicle}
+                  className="flex-1 py-2.5 text-xs !border-[#2C2C2C]"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   variant="primary"
-                  className="text-xs sm:text-sm py-2.5 px-5"
+                  isLoading={isSavingVehicle}
+                  className="flex-1 py-2.5 text-xs font-semibold"
                 >
-                  Add Vehicle
+                  {editingVehicleId ? "Save Changes" : "Add Vehicle"}
                 </Button>
               </div>
             </form>
@@ -1235,365 +1412,262 @@ export default function CustomerProfile() {
         </div>
       )}
 
-      {/* 3. Edit Vehicle Modal */}
-      {isEditVehicleOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-4 border-b border-[#2C2C2C]">
-              <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
-                Edit Vehicle
-              </h3>
-              <button
-                onClick={() => setIsEditVehicleOpen(false)}
-                className="text-[#71717A] hover:text-[#F5F5F5] p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEditVehicle} className="flex flex-col gap-4 mt-5">
-              <Input
-                label="Registration Number *"
-                value={vehiclePlate}
-                onChange={(e) => setVehiclePlate(e.target.value)}
-                placeholder="e.g. ABC-1234"
-                required
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Make *"
-                  value={vehicleMake}
-                  onChange={(e) => setVehicleMake(e.target.value)}
-                  placeholder="e.g. Tesla"
-                  required
-                />
-                <Input
-                  label="Model *"
-                  value={vehicleModel}
-                  onChange={(e) => setVehicleModel(e.target.value)}
-                  placeholder="e.g. Model 3"
-                  required
-                />
-              </div>
-
-              <Input
-                label="Colour"
-                value={vehicleColor}
-                onChange={(e) => setVehicleColor(e.target.value)}
-                placeholder="e.g. Metallic Silver"
-              />
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-soft-gray ml-1">
-                  Preferred Wash Package
-                </label>
-                <select
-                  value={vehiclePackage}
-                  onChange={(e) => setVehiclePackage(e.target.value)}
-                  className="w-full bg-[#101010] border border-[#2C2C2C] text-[#F5F5F5] rounded-lg px-4 py-3 outline-none focus:border-[#E86A33] text-sm"
-                >
-                  <option value="Standard Foam Wash">Standard Foam Wash</option>
-                  <option value="Exterior & Interior Deep Clean">
-                    Exterior & Interior Deep Clean
-                  </option>
-                  <option value="Ultimate Ceramic Wash">
-                    Ultimate Ceramic Wash
-                  </option>
-                  <option value="Ceramic Coating Pro">
-                    Ceramic Coating Pro
-                  </option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 mt-4 pt-4 border-t border-[#2C2C2C]">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsEditVehicleOpen(false)}
-                  className="text-xs sm:text-sm py-2.5 px-4 !border-[#2C2C2C]"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className="text-xs sm:text-sm py-2.5 px-5"
-                >
-                  Save Changes
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 4. Delete Vehicle Confirmation Modal */}
-      {vehicleToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl max-w-sm w-full p-6 shadow-2xl relative text-center">
-            <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-6 h-6" />
+      {/* Modal 3: Delete Vehicle Confirmation */}
+      {deletingVehicle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl max-w-md w-full p-6 shadow-2xl relative overflow-hidden text-center flex flex-col items-center">
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-red-500" />
+            <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/25 flex items-center justify-center text-red-400 mb-3">
+              <Trash2 className="w-6 h-6" />
             </div>
 
             <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
-              Remove Vehicle?
+              Delete Vehicle?
             </h3>
-            <p className="text-xs text-[#A1A1AA] mt-2 leading-relaxed">
+            <p className="text-xs text-[#A1A1AA] mt-1 mb-6 max-w-xs">
               Are you sure you want to remove{" "}
               <strong className="text-[#F5F5F5]">
-                {vehicleToDelete.make} {vehicleToDelete.model} (
-                {vehicleToDelete.plate})
+                {deletingVehicle.make} {deletingVehicle.model} ({deletingVehicle.plate})
               </strong>
-              ? You can re-add it at any time.
+              ? This action cannot be undone.
             </p>
 
-            <div className="grid grid-cols-2 gap-3 mt-6">
+            <div className="flex items-center gap-3 w-full">
               <Button
+                type="button"
                 variant="outline"
-                onClick={() => setVehicleToDelete(null)}
-                className="text-xs sm:text-sm py-2.5 !border-[#2C2C2C]"
+                onClick={() => setDeletingVehicle(null)}
+                disabled={isDeletingVehicle}
+                className="flex-1 py-2.5 text-xs !border-[#2C2C2C]"
               >
                 Cancel
               </Button>
               <button
+                type="button"
                 onClick={handleConfirmDeleteVehicle}
-                className="py-2.5 px-4 rounded-lg text-xs sm:text-sm font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors"
+                disabled={isDeletingVehicle}
+                className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-red-600/20"
               >
-                Remove
+                {isDeletingVehicle ? "Deleting..." : "Delete Vehicle"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 5. Booking Receipt / Details Modal */}
-      {activeReceipt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-4 border-b border-[#2C2C2C]">
-              <div className="flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-[#E86A33]" />
+      {/* Modal 4: Add Payment Method */}
+      {isPaymentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col gap-5 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] to-[#FFA26B]" />
+
+            <div className="flex items-start justify-between">
+              <div>
                 <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
-                  Booking Details
+                  Add Payment Card
                 </h3>
+                <p className="text-xs text-[#A1A1AA]">
+                  Card details are encrypted & PCI-DSS compliant
+                </p>
               </div>
               <button
-                onClick={() => setActiveReceipt(null)}
-                className="text-[#71717A] hover:text-[#F5F5F5] p-1 rounded-lg"
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="text-[#71717A] hover:text-[#F5F5F5] p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors"
+                aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="flex flex-col gap-4 mt-5">
-              <div className="flex justify-between items-center bg-[#101010] p-3.5 rounded-xl border border-[#2C2C2C]">
-                <div>
-                  <span className="text-[10px] uppercase tracking-wider text-[#71717A] block">
-                    Order Ref
-                  </span>
-                  <span className="font-mono text-sm font-bold text-[#F5F5F5]">
-                    {activeReceipt.id}
-                  </span>
-                </div>
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  {activeReceipt.status}
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-2.5 text-xs">
-                <div className="flex justify-between py-1.5 border-b border-[#2C2C2C]">
-                  <span className="text-[#71717A]">Service Package</span>
-                  <span className="font-semibold text-[#F5F5F5]">
-                    {activeReceipt.service}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-[#2C2C2C]">
-                  <span className="text-[#71717A]">Vehicle</span>
-                  <span className="font-medium text-[#F5F5F5]">
-                    {activeReceipt.vehicle}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-[#2C2C2C]">
-                  <span className="text-[#71717A]">Date & Time</span>
-                  <span className="font-medium text-[#F5F5F5]">
-                    {activeReceipt.date} • {activeReceipt.time}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-[#71717A]">Total Paid</span>
-                  <span className="font-bold text-[#E86A33] text-sm">
-                    {activeReceipt.amount}
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-[#2C2C2C] flex items-center justify-end gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    showToast("Receipt downloaded as PDF", "success");
-                    setActiveReceipt(null);
-                  }}
-                  className="w-full text-xs sm:text-sm py-2.5 !border-[#2C2C2C]"
-                >
-                  Download Receipt (PDF)
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 6. Transaction Details Modal */}
-      {activeTransaction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-4 border-b border-[#2C2C2C]">
-              <div className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-[#E86A33]" />
-                <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
-                  Transaction Receipt
-                </h3>
-              </div>
-              <button
-                onClick={() => setActiveTransaction(null)}
-                className="text-[#71717A] hover:text-[#F5F5F5] p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-4 mt-5 text-xs">
-              <div className="bg-[#101010] p-4 rounded-xl border border-[#2C2C2C] flex flex-col items-center justify-center text-center">
-                <span className="text-[11px] text-[#71717A]">Total Amount</span>
-                <span className="text-2xl font-bold font-display text-[#F5F5F5] mt-1">
-                  {activeTransaction.amount}
-                </span>
-                <span className="text-[11px] text-[#35B86B] font-medium mt-0.5">
-                  {activeTransaction.status}
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <div className="flex justify-between py-1.5 border-b border-[#2C2C2C]">
-                  <span className="text-[#71717A]">Description</span>
-                  <span className="font-semibold text-[#F5F5F5]">
-                    {activeTransaction.title}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-[#2C2C2C]">
-                  <span className="text-[#71717A]">Transaction Ref</span>
-                  <span className="font-mono text-[#F5F5F5]">
-                    {activeTransaction.id}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-[#2C2C2C]">
-                  <span className="text-[#71717A]">Date</span>
-                  <span className="text-[#F5F5F5]">{activeTransaction.date}</span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-[#71717A]">Payment Method</span>
-                  <span className="text-[#F5F5F5]">
-                    Card ending in {activeTransaction.cardLast4}
-                  </span>
-                </div>
-              </div>
-
-              <Button
-                variant="outline"
-                onClick={() => {
-                  showToast("Invoice saved to downloads", "success");
-                  setActiveTransaction(null);
-                }}
-                className="mt-4 text-xs sm:text-sm py-2.5 !border-[#2C2C2C]"
-              >
-                Download Statement
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 7. Add Payment Card Modal */}
-      {isAddCardOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-4 border-b border-[#2C2C2C]">
-              <div className="flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-[#E86A33]" />
-                <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
-                  Add Card
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsAddCardOpen(false)}
-                className="text-[#71717A] hover:text-[#F5F5F5] p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form
-              onSubmit={handleSavePaymentMethod}
-              className="flex flex-col gap-4 mt-5"
-            >
+            <form onSubmit={handleSavePaymentMethod} className="flex flex-col gap-4">
               <Input
                 label="Cardholder Name *"
-                value={newCardHolder}
-                onChange={(e) => setNewCardHolder(e.target.value)}
-                placeholder="Name on card"
+                placeholder="e.g. Alex Burns"
+                value={cardHolder}
+                onChange={(e) => {
+                  setCardHolder(e.target.value);
+                  if (cardErrors.cardHolder) setCardErrors((p) => ({ ...p, cardHolder: "" }));
+                }}
+                error={cardErrors.cardHolder}
+                icon={<User className="w-4 h-4" />}
                 required
               />
 
               <Input
                 label="Card Number *"
-                value={newCardNumber}
-                onChange={(e) => setNewCardNumber(e.target.value)}
-                placeholder="4000 0000 0000 0000"
+                placeholder="4000 1234 5678 9010"
+                value={cardNumber}
+                onChange={handleCardNumberChange}
+                error={cardErrors.cardNumber}
                 maxLength={19}
+                icon={<CreditCard className="w-4 h-4" />}
                 required
               />
 
               <div className="grid grid-cols-2 gap-3">
                 <Input
-                  label="Expires (MM/YY) *"
-                  value={newCardExpiry}
-                  onChange={(e) => setNewCardExpiry(e.target.value)}
+                  label="Expiry Date (MM/YY) *"
                   placeholder="12/28"
+                  value={cardExpiry}
+                  onChange={handleCardExpiryChange}
+                  error={cardErrors.cardExpiry}
                   maxLength={5}
+                  icon={<Calendar className="w-4 h-4" />}
                   required
                 />
                 <Input
-                  label="CVC / CVV *"
+                  label="CVV *"
                   type="password"
-                  value={newCardCvc}
-                  onChange={(e) => setNewCardCvc(e.target.value)}
                   placeholder="123"
+                  value={cardCvv}
+                  onChange={handleCardCvvChange}
+                  error={cardErrors.cardCvv}
                   maxLength={4}
+                  icon={<Lock className="w-4 h-4" />}
                   required
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 mt-4 pt-4 border-t border-[#2C2C2C]">
+              <div className="flex items-center gap-2 text-[11px] text-[#71717A] pt-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#35B86B] shrink-0" />
+                <span>Only safe card brand and last 4 digits are saved.</span>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsAddCardOpen(false)}
-                  className="text-xs sm:text-sm py-2.5 px-4 !border-[#2C2C2C]"
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  disabled={isSavingPayment}
+                  className="flex-1 py-2.5 text-xs !border-[#2C2C2C]"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   variant="primary"
-                  className="text-xs sm:text-sm py-2.5 px-5"
+                  isLoading={isSavingPayment}
+                  className="flex-1 py-2.5 text-xs font-semibold"
                 >
                   Save Card
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 5: Delete Payment Method Confirmation */}
+      {deletingPaymentId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl max-w-md w-full p-6 shadow-2xl relative overflow-hidden text-center flex flex-col items-center">
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-red-500" />
+            <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/25 flex items-center justify-center text-red-400 mb-3">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
+              Remove Payment Card?
+            </h3>
+            <p className="text-xs text-[#A1A1AA] mt-1 mb-6 max-w-xs">
+              Are you sure you want to delete this saved card from your account?
+            </p>
+
+            <div className="flex items-center gap-3 w-full">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeletingPaymentId(null)}
+                disabled={isDeletingPayment}
+                className="flex-1 py-2.5 text-xs !border-[#2C2C2C]"
+              >
+                Cancel
+              </Button>
+              <button
+                type="button"
+                onClick={handleConfirmDeletePayment}
+                disabled={isDeletingPayment}
+                className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-red-600/20"
+              >
+                {isDeletingPayment ? "Removing..." : "Remove Card"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 6: Real Booking Receipt */}
+      {viewingReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col gap-5 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#35B86B] to-[#35B86B]/50" />
+
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#35B86B]/15 border border-[#35B86B]/30 flex items-center justify-center text-[#35B86B]">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
+                    Service Receipt
+                  </h3>
+                  <p className="text-xs text-[#A1A1AA]">
+                    Appointment ID: {viewingReceipt.id}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingReceipt(null)}
+                className="text-[#71717A] hover:text-[#F5F5F5] p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors"
+                aria-label="Close receipt"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-[#101010] border border-[#2C2C2C] rounded-xl p-4 flex flex-col gap-2.5 text-xs">
+              <div className="flex items-center justify-between pb-2 border-b border-[#2C2C2C]">
+                <span className="text-[#71717A]">Package</span>
+                <span className="font-bold text-[#F5F5F5]">
+                  {viewingReceipt.packageName}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#71717A]">Date & Time</span>
+                <span className="font-medium text-[#F5F5F5]">
+                  {viewingReceipt.date} • {viewingReceipt.time}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#71717A]">Vehicle</span>
+                <span className="font-medium text-[#F5F5F5]">
+                  {viewingReceipt.vehicle || "Customer Vehicle"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#71717A]">Service Type</span>
+                <span className="font-medium text-[#F5F5F5]">
+                  {viewingReceipt.serviceType || "Mobile Call-out"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-[#2C2C2C]">
+                <span className="text-sm font-bold text-[#F5F5F5]">
+                  Amount Paid
+                </span>
+                <span className="text-base font-extrabold text-[#E86A33]">
+                  {viewingReceipt.price}
+                </span>
+              </div>
+            </div>
+
+            <Button
+              variant="primary"
+              fullWidth
+              onClick={() => setViewingReceipt(null)}
+              className="py-2.5 text-xs font-semibold"
+            >
+              Close Receipt
+            </Button>
           </div>
         </div>
       )}

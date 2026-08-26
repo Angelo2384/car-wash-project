@@ -4,6 +4,11 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../../../contexts/AuthContext';
 import { db } from '../../../lib/firebase';
 import { calculateCallOutFee } from '../../../lib/appointments';
+import {
+  getStoredVehicles,
+  subscribeToCustomerVehicles,
+  type CustomerVehicle,
+} from '../../../lib/vehicles';
 import { useToast } from '../../../contexts/ToastContext';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -70,24 +75,25 @@ export default function CustomerBooking() {
   const location  = useLocation();
   const { showToast } = useToast();
   const { currentUser } = useAuth();
+  const uid = currentUser?.uid;
 
   const [hasMembership, setHasMembership] = useState<boolean>(() => {
-    if (!currentUser?.uid) return false;
-    const cached = localStorage.getItem(`ww_has_membership_${currentUser.uid}`);
+    if (!uid) return false;
+    const cached = localStorage.getItem(`ww_has_membership_${uid}`);
     return cached ? JSON.parse(cached) : false;
   });
 
   useEffect(() => {
-    if (!currentUser?.uid) return;
-    const unsub = onSnapshot(doc(db, "users", currentUser.uid), (snap) => {
+    if (!uid) return;
+    const unsub = onSnapshot(doc(db, "users", uid), (snap) => {
       if (snap.exists()) {
         const mem = snap.data()?.hasMembership === true;
         setHasMembership(mem);
-        localStorage.setItem(`ww_has_membership_${currentUser.uid}`, JSON.stringify(mem));
+        localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(mem));
       }
     });
     return () => unsub();
-  }, [currentUser?.uid]);
+  }, [uid]);
 
   const packageId: string = (location.state as any)?.packageId ?? 'premium';
   const pkg = PACKAGES[packageId] ?? PACKAGES.premium;
@@ -101,6 +107,39 @@ export default function CustomerBooking() {
   const [plate,   setPlate]   = useState('');
   const [vehicle, setVehicle] = useState('');
   const [notes,   setNotes]   = useState('');
+
+  // ─── Real Saved Vehicles from Profile ──────────────────────────────────────
+  const [savedVehicles, setSavedVehicles] = useState<CustomerVehicle[]>(() =>
+    getStoredVehicles(uid)
+  );
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('custom');
+
+  useEffect(() => {
+    const unsub = subscribeToCustomerVehicles(uid, (list) => {
+      setSavedVehicles(list);
+      // If user has saved vehicles and no vehicle filled yet, auto-select first
+      if (list.length > 0 && !plate && !vehicle) {
+        setSelectedVehicleId(list[0].id);
+        setPlate(list[0].plate);
+        setVehicle(`${list[0].make} ${list[0].model}`);
+      }
+    });
+    return () => unsub();
+  }, [uid]);
+
+  const handleSelectSavedVehicle = (vId: string) => {
+    setSelectedVehicleId(vId);
+    if (vId === 'custom') {
+      setPlate('');
+      setVehicle('');
+    } else {
+      const found = savedVehicles.find((v) => v.id === vId);
+      if (found) {
+        setPlate(found.plate);
+        setVehicle(`${found.make} ${found.model}`);
+      }
+    }
+  };
 
   const callOutFee = calculateCallOutFee(serviceType, hasMembership);
   const subtotal = pkg.price + callOutFee;
@@ -133,6 +172,10 @@ export default function CustomerBooking() {
         plate,
         vehicle,
         notes,
+        customOptionCount:
+          (location.state as any)?.customServices?.length ||
+          (location.state as any)?.customOptionCount ||
+          0,
       },
     });
   };
@@ -299,6 +342,51 @@ export default function CustomerBooking() {
           {/* Vehicle details */}
           <SectionCard title="Vehicle Details">
             <div className="flex flex-col gap-4">
+              {/* Saved Vehicles Quick Select */}
+              {savedVehicles.length > 0 && (
+                <div className="flex flex-col gap-2 pb-2 border-b border-[#2C2C2C]">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#A1A1AA]">
+                    Select a Saved Vehicle
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {savedVehicles.map((v) => {
+                      const isSelected = selectedVehicleId === v.id;
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => handleSelectSavedVehicle(v.id)}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
+                            isSelected
+                              ? 'bg-[#E86A33]/15 border-[#E86A33] text-[#F5F5F5] shadow-sm shadow-[#E86A33]/10'
+                              : 'bg-[#101010] border-[#2C2C2C] text-[#A1A1AA] hover:border-[#3C3C3C] hover:text-[#F5F5F5]'
+                          }`}
+                        >
+                          <Car className="w-3.5 h-3.5 text-[#E86A33]" />
+                          <span>
+                            {v.make} {v.model}
+                          </span>
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[#1F1F1F] text-[#F5F5F5] border border-[#2C2C2C]">
+                            {v.plate}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSavedVehicle('custom')}
+                      className={`px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
+                        selectedVehicleId === 'custom'
+                          ? 'bg-[#E86A33]/15 border-[#E86A33] text-[#F5F5F5]'
+                          : 'bg-[#101010] border-[#2C2C2C] text-[#71717A] hover:text-[#F5F5F5]'
+                      }`}
+                    >
+                      Other / Manual Entry
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <Input
                 label="Licence Plate"
                 placeholder="e.g. CA 123 456"

@@ -193,20 +193,20 @@ export function getRewardsStorageKey(uid?: string | null): string {
 }
 
 /**
- * Calculates booking reward points based on cart total.
- * Standard rate is 2 points per ZAR / currency unit, plus multiplier if membership/tier applies.
+ * Calculates booking reward points using FIXED per-package values.
+ * Express = 50, Premium = 100, Elite = 150, Custom = 15 × selected options.
+ * No price-based calculation, no membership/tier multipliers.
  */
 export function calculateBookingPoints(
-  total: number,
-  hasMembership: boolean = false,
-  tier: TierName = 'Bronze'
+  packageName: string,
+  customOptionCount: number = 0
 ): number {
-  const basePoints = Math.round(total * 2);
-  let multiplier = LOYALTY_TIERS[tier]?.multiplier || 1.0;
-  if (hasMembership && multiplier < 2.0) {
-    multiplier = Math.max(multiplier, 2.0); // Membership gives at least double points
-  }
-  return Math.round(basePoints * (multiplier / (LOYALTY_TIERS.Bronze.multiplier || 1.0)));
+  const lower = packageName.toLowerCase();
+  if (lower.includes('express')) return 50;
+  if (lower.includes('premium')) return 100;
+  if (lower.includes('elite')) return 150;
+  if (lower.includes('custom')) return Math.max(15, customOptionCount * 15);
+  return 50; // safe fallback
 }
 
 /**
@@ -443,14 +443,14 @@ export function subscribeToRewards(
 
 /**
  * Awards reward points for a completed booking.
+ * Uses FIXED per-package values. No price-based calculation.
  * GUARANTEED IDEMPOTENT: Will not award points twice for the same appointmentId.
  */
 export async function awardBookingPoints(
   uid: string | null | undefined,
   appointmentId: string,
-  totalAmount: number,
   packageName: string,
-  hasMembership: boolean = false
+  customOptionCount: number = 0
 ): Promise<{ success: boolean; pointsAwarded: number; alreadyAwarded?: boolean }> {
   const currentSummary = getRewardsSummary(uid);
 
@@ -486,7 +486,7 @@ export async function awardBookingPoints(
     }
   }
 
-  const pointsToEarn = calculateBookingPoints(totalAmount, hasMembership, currentSummary.currentTier);
+  const pointsToEarn = calculateBookingPoints(packageName, customOptionCount);
   const newTransaction: RewardTransaction = {
     id: `tx-earn-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     type: 'earned',
@@ -687,3 +687,134 @@ export async function recordReviewPoints(
     points: reviewPoints,
   };
 }
+
+/**
+ * Returns all unused, non-expired redeemed rewards / vouchers for a user.
+ */
+export function getValidVouchers(uid?: string | null): RedeemedReward[] {
+  const summary = getRewardsSummary(uid);
+  const now = Date.now();
+  return (summary.redeemedRewards || []).filter(
+    (v) => !v.isUsed && (!v.expiresAt || v.expiresAt > now)
+  );
+}
+
+/**
+ * Marks a specific redeemed reward / voucher as used.
+ */
+export function markVoucherUsed(voucherIdOrCode: string, uid?: string | null): void {
+  const summary = getRewardsSummary(uid);
+  let updated = false;
+  const updatedVouchers = (summary.redeemedRewards || []).map((v) => {
+    if ((v.id === voucherIdOrCode || v.voucherCode === voucherIdOrCode) && !v.isUsed) {
+      updated = true;
+      return { ...v, isUsed: true };
+    }
+    return v;
+  });
+
+  if (updated) {
+    const updatedSummary: RewardsSummary = {
+      ...summary,
+      lastActivity: Date.now(),
+      redeemedRewards: updatedVouchers,
+    };
+    saveRewardsSummary(updatedSummary, uid);
+  }
+}
+
+export interface VoucherDiscountResult {
+  applies: boolean;
+  discountAmount: number;
+  reason?: string;
+}
+
+/**
+ * Evaluates whether a redeemed voucher is valid for a given package and calculates discount amount.
+ */
+export function getVoucherDiscount(
+  voucher: RedeemedReward,
+  packageName: string,
+  packagePrice: number
+): VoucherDiscountResult {
+  const reward = REWARDS_CATALOGUE.find((r) => r.id === voucher.rewardId);
+  const pkgLower = packageName.toLowerCase();
+
+  // Specific rule for 10% Off Express Wash
+  if (
+    voucher.rewardId === 'rw_10off_express' ||
+    voucher.rewardTitle.toLowerCase().includes('express')
+  ) {
+    if (!pkgLower.includes('express')) {
+      return {
+        applies: false,
+        discountAmount: 0,
+        reason: 'This reward can only be used with an Express Wash.',
+      };
+    }
+    const discount = Math.round(packagePrice * 0.10 * 100) / 100;
+    return {
+      applies: true,
+      discountAmount: discount,
+    };
+  }
+
+  // 50% off ceramic booster
+  if (voucher.rewardId === 'rw_50off_ceramic_boost') {
+    const discount = Math.min(packagePrice, 60);
+    return {
+      applies: true,
+      discountAmount: discount,
+    };
+  }
+
+  // Free rim shine
+  if (voucher.rewardId === 'rw_free_rim_shine') {
+    const discount = Math.min(packagePrice, 50);
+    return {
+      applies: true,
+      discountAmount: discount,
+    };
+  }
+
+  // Signature fragrance
+  if (voucher.rewardId === 'rw_fragrance_pack') {
+    const discount = Math.min(packagePrice, 30);
+    return {
+      applies: true,
+      discountAmount: discount,
+    };
+  }
+
+  // Ozone sanitization
+  if (voucher.rewardId === 'rw_interior_sanitization') {
+    const discount = Math.min(packagePrice, 150);
+    return {
+      applies: true,
+      discountAmount: discount,
+    };
+  }
+
+  // Free full detail
+  if (voucher.rewardId === 'rw_free_full_detail') {
+    const discount = Math.min(packagePrice, 275);
+    return {
+      applies: true,
+      discountAmount: discount,
+    };
+  }
+
+  // Category fallback
+  if (reward?.category === 'discount') {
+    return {
+      applies: true,
+      discountAmount: Math.round(packagePrice * 0.10 * 100) / 100,
+    };
+  }
+
+  return {
+    applies: true,
+    discountAmount: Math.min(packagePrice, 50),
+  };
+}
+

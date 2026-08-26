@@ -27,6 +27,7 @@ import CustomerContactUs from './screens/dashboard/customer/CustomerContactUs';
 import CustomerAboutUs from './screens/dashboard/customer/AboutUsScreen';
 import CustomerMembership from './screens/dashboard/customer/CustomerMembership';
 import CustomerRewards from './screens/dashboard/customer/CustomerRewards';
+import CustomerReviews from './screens/dashboard/customer/CustomerReviews';
 import StaffDashboard from './screens/dashboard/staff/StaffDashboard';
 import AdminDashboard from './screens/dashboard/admin/AdminDashboard';
 import { AuthProvider } from './contexts/AuthContext';
@@ -68,6 +69,7 @@ export default function App() {
               <Route path="about-us" element={<CustomerAboutUs />} />
               <Route path="membership" element={<CustomerMembership />} />
               <Route path="rewards" element={<CustomerRewards />} />
+              <Route path="reviews" element={<CustomerReviews />} />
             </Route>
             <Route path="/dashboard/staff" element={<StaffDashboard />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />

@@ -10,7 +10,10 @@ import { saveAppointment, calculateCallOutFee, type StoredAppointment } from '..
 import {
   calculateBookingPoints,
   awardBookingPoints,
-  getRewardsSummary,
+  getValidVouchers,
+  getVoucherDiscount,
+  markVoucherUsed,
+  type RedeemedReward,
 } from '../../../lib/rewards';
 import {
   ArrowLeft,
@@ -90,6 +93,7 @@ interface BookingNavState {
   plate?: string;
   vehicle?: string;
   notes?: string;
+  customOptionCount?: number;
 }
 
 export default function CustomerCheckout() {
@@ -114,12 +118,16 @@ export default function CustomerCheckout() {
   const bookingVehicle: string = navState.vehicle || '';
   const bookingNotes: string = navState.notes || '';
   const serviceType: string = navState.serviceType || 'Call-out';
+  const customOptionCount: number = navState.customOptionCount || 0;
 
   const [hasMembership, setHasMembership] = useState<boolean>(() => {
     if (!currentUser?.uid) return false;
     const cached = localStorage.getItem(`ww_has_membership_${currentUser.uid}`);
     return cached ? JSON.parse(cached) : false;
   });
+
+  // Voucher state
+  const [appliedVoucher, setAppliedVoucher] = useState<RedeemedReward | null>(null);
 
   useEffect(() => {
     if (!currentUser?.uid) return;
@@ -133,17 +141,42 @@ export default function CustomerCheckout() {
     return () => unsub();
   }, [currentUser?.uid]);
 
+  // Load and auto-select valid voucher for current user
+  useEffect(() => {
+    const vouchers = getValidVouchers(currentUser?.uid);
+    if (vouchers.length > 0) {
+      // Find voucher that applies to current package
+      const matching = vouchers.find((v) => getVoucherDiscount(v, pkg.name, pkg.price).applies);
+      if (matching) {
+        setAppliedVoucher(matching);
+      } else {
+        // If there's an unused voucher, set it as applied so the incompatibility reason displays
+        setAppliedVoucher(vouchers[0]);
+      }
+    } else {
+      setAppliedVoucher(null);
+    }
+  }, [currentUser?.uid, pkg.name, pkg.price]);
+
   const displayDate = bookingDate
     ? new Date(bookingDate).toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
     : 'Oct 26, 2026';
   const displayTime = bookingTime || '10:00 AM';
 
-  const userRewards = getRewardsSummary(currentUser?.uid);
+  // Evaluate voucher discount
+  const voucherResult = appliedVoucher
+    ? getVoucherDiscount(appliedVoucher, pkg.name, pkg.price)
+    : null;
+  const discountAmount = voucherResult?.applies ? voucherResult.discountAmount : 0;
+
   const callOutFee = calculateCallOutFee(serviceType, hasMembership);
-  const subtotal = pkg.price + callOutFee;
+  const discountedPkgPrice = Math.max(0, pkg.price - discountAmount);
+  const subtotal = discountedPkgPrice + callOutFee;
   const vat = subtotal * VAT;
   const total = subtotal + vat;
-  const pointsEarned = calculateBookingPoints(total, false, userRewards.currentTier);
+
+  // Fixed points calculation: Express=50, Premium=100, Elite=150, Custom=15*options
+  const pointsEarned = calculateBookingPoints(pkg.name, customOptionCount);
 
   // Form State
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('card');
@@ -250,8 +283,13 @@ export default function CustomerCheckout() {
 
       saveAppointment(newAppointment, currentUser?.uid);
       
-      // Award reward points idempotently
-      await awardBookingPoints(currentUser?.uid, newAppointment.id, total, pkg.name);
+      // Mark voucher as used ONLY after successful booking / payment
+      if (appliedVoucher && voucherResult?.applies) {
+        markVoucherUsed(appliedVoucher.id, currentUser?.uid);
+      }
+
+      // Award reward points idempotently with fixed values
+      await awardBookingPoints(currentUser?.uid, newAppointment.id, pkg.name, customOptionCount);
 
       showToast(`Payment of ${fmt(total)} confirmed! +${pointsEarned} reward points added.`, 'success');
       setIsSuccessModalOpen(true);
@@ -517,11 +555,57 @@ export default function CustomerCheckout() {
               )}
             </div>
 
+            {/* ── Redeemed Reward / Voucher Section ── */}
+            {appliedVoucher && (
+              <>
+                <div className="h-px bg-[#2C2C2C]" />
+                <div className="flex flex-col gap-2">
+                  <span className="text-[11px] uppercase tracking-widest text-[#71717A] font-semibold">
+                    Redeemed Reward
+                  </span>
+
+                  <div className="bg-[#101010] border border-[#2C2C2C] rounded-xl p-3.5 flex flex-col gap-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-bold text-[#F5F5F5] truncate">
+                          {appliedVoucher.rewardTitle}
+                        </span>
+                        <span className="text-[11px] font-mono text-[#A1A1AA] mt-0.5">
+                          Voucher: {appliedVoucher.voucherCode}
+                        </span>
+                      </div>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30 shrink-0">
+                        <Check className="w-3 h-3" />
+                        Redeemed
+                      </span>
+                    </div>
+
+                    {voucherResult?.applies ? (
+                      <div className="flex items-center justify-between pt-2 border-t border-[#2C2C2C]/60 text-xs">
+                        <span className="text-[#A1A1AA]">Discount</span>
+                        <span className="font-bold text-[#35B86B]">-{fmt(discountAmount)}</span>
+                      </div>
+                    ) : (
+                      <div className="pt-1 text-[11px] text-amber-400/90 leading-tight">
+                        {voucherResult?.reason || 'This voucher is not applicable to the selected package.'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
             <div className="h-px bg-[#2C2C2C]" />
 
             {/* Price breakdown */}
             <div className="flex flex-col gap-2.5">
               <SummaryRow label="Package Price" value={fmt(pkg.price)} />
+              {discountAmount > 0 && (
+                <div className="flex items-center justify-between text-sm text-[#35B86B]">
+                  <span>Discount</span>
+                  <span className="font-semibold">-{fmt(discountAmount)}</span>
+                </div>
+              )}
               {callOutFee > 0 && <SummaryRow label="Call-out Fee" value={fmt(callOutFee)} />}
               <SummaryRow label="Subtotal" value={fmt(subtotal)} />
               <SummaryRow label="VAT (15%)" value={fmt(vat)} />
