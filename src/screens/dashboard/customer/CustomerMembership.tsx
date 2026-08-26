@@ -15,8 +15,6 @@ import {
   User,
   Calendar,
   X,
-  Shield,
-  Zap,
 } from "lucide-react";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase";
