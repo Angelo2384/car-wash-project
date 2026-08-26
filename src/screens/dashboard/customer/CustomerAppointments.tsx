@@ -148,12 +148,12 @@ export default function CustomerAppointments() {
     : DEFAULT_MOCK_APPOINTMENTS;
 
   const upcomingAppointments = allAppointments.filter((appt) => {
-    const dyn = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership, appt.status);
+    const dyn = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership, appt.status, appt.confirmed);
     return dyn.status !== 'Missed' && dyn.status !== 'Completed' && dyn.status !== 'Cancelled';
   });
 
   const historyAppointments = allAppointments.filter((appt) => {
-    const dyn = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership, appt.status);
+    const dyn = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership, appt.status, appt.confirmed);
     return dyn.status === 'Missed' || dyn.status === 'Completed' || dyn.status === 'Cancelled';
   });
 
@@ -193,7 +193,7 @@ export default function CustomerAppointments() {
           <>
             {upcomingAppointments.length > 0 ? (
               upcomingAppointments.map((appt) => {
-                const dynamic = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership, appt.status);
+                const dynamic = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership, appt.status, appt.confirmed);
                 return (
                   <AppointmentCard
                     key={appt.id}
@@ -208,6 +208,7 @@ export default function CustomerAppointments() {
                     staffName={appt.staffName}
                     staffStatus={appt.staffStatus}
                     completed={appt.completed}
+                    confirmed={appt.confirmed}
                     hasMembership={hasMembership}
                     onReschedule={() => {
                       navigate('/dashboard/customer/appointments/reschedule', {
@@ -250,7 +251,7 @@ export default function CustomerAppointments() {
           <>
             {historyAppointments.length > 0 ? (
               historyAppointments.map((appt) => {
-                const dynamic = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership, appt.status);
+                const dynamic = getDynamicAppointmentStatus(appt.date, appt.time, appt.status === 'Missed', appt.completed, hasMembership, appt.status, appt.confirmed);
                 return (
                   <AppointmentCard
                     key={appt.id}
@@ -267,6 +268,7 @@ export default function CustomerAppointments() {
                     isMissed={dynamic.status === 'Missed'}
                     isCancelled={dynamic.status === 'Cancelled' || appt.status === 'Cancelled'}
                     completed={appt.completed}
+                    confirmed={appt.confirmed}
                     hasMembership={hasMembership}
                     onReschedule={() => {
                       navigate('/dashboard/customer/appointments/reschedule', {
@@ -325,11 +327,12 @@ function AppointmentCard({
   isMissed: propIsMissed, 
   isCancelled,
   completed,
+  confirmed,
   hasMembership,
   onReschedule, 
   onCancel 
 }: any) {
-  const dynamic = getDynamicAppointmentStatus(date, time, propIsMissed, completed, hasMembership, isCancelled ? 'Cancelled' : undefined);
+  const dynamic = getDynamicAppointmentStatus(date, time, propIsMissed, completed, hasMembership, isCancelled ? 'Cancelled' : undefined, confirmed);
 
   const status = dynamic.status;
   const statusColor = dynamic.statusColor;
