@@ -1044,7 +1044,11 @@ export default function CustomerProfile() {
                 {appointments.slice(0, 5).map((appt) => {
                   const isCancelled = appt.status === "Cancelled";
                   const isCompleted = appt.status === "Completed";
-                  const isWaiting = appt.status === "Waiting Confirmation";
+                  const isWaiting = appt.confirmed === false;
+
+                  const displayStatus = isWaiting
+                    ? "Awaiting Confirmation"
+                    : appt.status;
 
                   return (
                     <tr
@@ -1077,7 +1081,7 @@ export default function CustomerProfile() {
                               : "bg-blue-500/15 text-blue-400 border-blue-500/30"
                           }`}
                         >
-                          {appt.status}
+                          {displayStatus}
                         </span>
                       </td>
 

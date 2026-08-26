@@ -272,12 +272,13 @@ export default function CustomerCheckout() {
         location: formattedAddress,
         vehicle: bookingVehicle ? `${bookingVehicle}${bookingPlate ? ` (${bookingPlate})` : ''}` : 'Tesla Model 3',
         notes: bookingNotes,
-        status: 'Waiting Confirmation',
+        confirmed: false,
+        status: 'Awaiting Confirmation',
         statusColor: 'amber',
         staffName: 'Pending Assignment',
         staffStatus: 'Finding Staff...',
         isLocked: false,
-        cancellationPolicy: 'Cancel before your appointment time for a full refund.',
+        cancellationPolicy: 'This booking is awaiting confirmation from our team.',
         createdAt: Date.now(),
       };
 
@@ -694,7 +695,7 @@ export default function CustomerCheckout() {
               <div className="flex items-center justify-between pt-2 border-t border-[#2C2C2C] text-xs">
                 <span className="text-[#71717A]">Status</span>
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                  Waiting Confirmation
+                  Awaiting Confirmation
                 </span>
               </div>
             </div>

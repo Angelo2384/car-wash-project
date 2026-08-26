@@ -21,6 +21,7 @@ export interface StoredAppointment {
   cancelReason?: string;
   createdAt: number;
   completed?: boolean;
+  confirmed?: boolean;
 }
 
 export const CALL_OUT_FEE = 150;
@@ -168,7 +169,8 @@ export function getDynamicAppointmentStatus(
   initialIsMissed?: boolean,
   completed?: boolean,
   hasMembership: boolean = false,
-  initialStatus?: string
+  initialStatus?: string,
+  confirmed?: boolean
 ): DynamicStatusResult {
   if (initialStatus === 'Cancelled') {
     return {
@@ -182,6 +184,17 @@ export function getDynamicAppointmentStatus(
   }
 
   const canReschedule = isRescheduleEligible(dateStr, timeStr, hasMembership, initialIsMissed, completed);
+
+  if (confirmed === false) {
+    return {
+      status: 'Awaiting Confirmation',
+      statusColor: 'amber',
+      isLocked: false,
+      isMissed: false,
+      canReschedule,
+      cancellationPolicy: 'This booking is awaiting confirmation from our team.',
+    };
+  }
 
   if (completed) {
     return {
