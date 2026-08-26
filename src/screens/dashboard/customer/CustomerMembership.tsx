@@ -151,7 +151,7 @@ export default function CustomerMembership() {
         const feeStr = billingCycle === "monthly" ? "R199.00" : "R1,899.00";
         
         addNotification({
-          category: 'system',
+          category: 'membership',
           icon: 'crown',
           title: 'Membership Activated',
           message: `Welcome to VIP Membership! You now have unlimited free mobile call-outs and 20% discount on detailing.`,
@@ -201,7 +201,7 @@ export default function CustomerMembership() {
       window.dispatchEvent(new Event("ww_membership_changed"));
 
       addNotification({
-        category: 'system',
+        category: 'membership',
         icon: 'check',
         title: 'Membership Cancelled',
         message: 'Your VIP Membership subscription has been cancelled.',

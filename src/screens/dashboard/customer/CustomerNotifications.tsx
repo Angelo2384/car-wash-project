@@ -78,6 +78,7 @@ interface PreferencesSettings {
   promotions: boolean;
   systemUpdates: boolean;
   reviews: boolean;
+  membership: boolean;
   pushNotifications: boolean;
   email: boolean;
   sms: boolean;
@@ -122,6 +123,7 @@ function PreferencesModal({
     { key: "promotions", label: "Promotions", desc: "Special offers, seasonal deals, and discounts", icon: <Tag className="w-4 h-4 text-[#FBBF24]" /> },
     { key: "systemUpdates", label: "System Updates", desc: "Payment receipts, account changes, security alerts", icon: <Shield className="w-4 h-4 text-[#A78BFA]" /> },
     { key: "reviews", label: "Reviews & Feedback", desc: "Review requests and feedback responses", icon: <Star className="w-4 h-4 text-[#E86A33]" /> },
+    { key: "membership", label: "Membership", desc: "VIP perks, tier status, and renewal alerts", icon: <Crown className="w-4 h-4 text-[#A78BFA]" /> },
   ];
 
   const deliveryRows: { key: keyof PreferencesSettings; label: string; desc: string; icon: React.ReactNode }[] = [
@@ -359,6 +361,7 @@ export default function CustomerNotifications() {
     { key: "promotions", label: "Promotions" },
     { key: "system", label: "System" },
     { key: "reviews", label: "Reviews" },
+    { key: "membership", label: "Membership" },
   ];
 
   // ─── Render ──────────────────────────────────────────────────────────────────
@@ -386,11 +389,36 @@ export default function CustomerNotifications() {
           {/* ── Left: Notification list ── */}
           <div className="flex-1 min-w-0">
             {/* Tabs + actions */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-              <div className="flex items-center gap-1 bg-[#171717] border border-[#2C2C2C] rounded-xl p-1 overflow-x-auto">
+            <div className="flex flex-col gap-3 mb-4">
+              {/* Actions row */}
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-medium text-[#71717A]">
+                  Filter by category
+                </span>
+                <div className="flex items-center gap-4">
+                  {showClearConfirm ? (
+                    <div className="flex items-center gap-2 bg-[#1F1F1F] border border-[#3A3A3A] rounded-lg px-2.5 py-1">
+                      <span className="text-[12px] text-[#A1A1AA]">Clear all?</span>
+                      <button onClick={handleClearAll} className="text-[12px] text-[#E86A33] font-semibold hover:text-[#FF8055] transition-colors">Yes</button>
+                      <button onClick={() => setShowClearConfirm(false)} className="text-[12px] text-[#71717A] hover:text-[#A1A1AA] transition-colors">No</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setShowClearConfirm(true)} className="text-[12px] text-[#71717A] hover:text-[#A1A1AA] transition-colors">
+                      Clear all
+                    </button>
+                  )}
+                  <button onClick={markAllRead} className="flex items-center gap-1.5 text-[12px] text-[#E86A33] font-medium hover:text-[#FF8055] transition-colors">
+                    <Check className="w-3.5 h-3.5" />
+                    Mark all as read
+                  </button>
+                </div>
+              </div>
+
+              {/* Tabs container: wraps smoothly without scrollbar so all tabs are visible */}
+              <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[#171717] border border-[#2C2C2C] rounded-xl">
                 {tabs.map((tab) => (
                   <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                    className={`px-3.5 py-1.5 rounded-lg text-[13px] font-medium whitespace-nowrap transition-all duration-150 ${
+                    className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all duration-150 ${
                       activeTab === tab.key
                         ? "bg-[#E86A33] text-white shadow-[0_0_12px_rgba(232,106,51,0.25)]"
                         : "text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.04]"
@@ -398,23 +426,6 @@ export default function CustomerNotifications() {
                     {tab.label}
                   </button>
                 ))}
-              </div>
-              <div className="flex items-center gap-4 shrink-0">
-                {showClearConfirm ? (
-                  <div className="flex items-center gap-2 bg-[#1F1F1F] border border-[#3A3A3A] rounded-lg px-3 py-1.5">
-                    <span className="text-[12px] text-[#A1A1AA]">Clear all?</span>
-                    <button onClick={handleClearAll} className="text-[12px] text-[#E86A33] font-semibold hover:text-[#FF8055] transition-colors">Yes</button>
-                    <button onClick={() => setShowClearConfirm(false)} className="text-[12px] text-[#71717A] hover:text-[#A1A1AA] transition-colors">No</button>
-                  </div>
-                ) : (
-                  <button onClick={() => setShowClearConfirm(true)} className="text-[13px] text-[#71717A] hover:text-[#A1A1AA] transition-colors">
-                    Clear all
-                  </button>
-                )}
-                <button onClick={markAllRead} className="flex items-center gap-1.5 text-[13px] text-[#E86A33] font-medium hover:text-[#FF8055] transition-colors">
-                  <Check className="w-3.5 h-3.5" />
-                  Mark all as read
-                </button>
               </div>
             </div>
 
@@ -569,6 +580,7 @@ export default function CustomerNotifications() {
                   { key: "promotions" as const, label: "Promotions" },
                   { key: "systemUpdates" as const, label: "System Updates" },
                   { key: "reviews" as const, label: "Reviews" },
+                  { key: "membership" as const, label: "Membership" },
                 ].map(({ key, label }) => (
                   <div key={key} className="flex items-center justify-between">
                     <span className="text-[13px] text-[#A1A1AA]">{label}</span>
