@@ -6,6 +6,7 @@ import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { useToast } from '../../../contexts/ToastContext';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useNotifications } from '../../../contexts/NotificationsContext';
 import { saveAppointment, calculateCallOutFee, type StoredAppointment } from '../../../lib/appointments';
 import {
   calculateBookingPoints,
@@ -101,6 +102,7 @@ export default function CustomerCheckout() {
   const location = useLocation();
   const { showToast } = useToast();
   const { currentUser } = useAuth();
+  const { addNotification } = useNotifications();
 
   // Read booking details from navigation state with safe fallbacks
   const navState = (location.state as BookingNavState | null) || {};
@@ -284,13 +286,54 @@ export default function CustomerCheckout() {
 
       saveAppointment(newAppointment, currentUser?.uid);
       
+      // 1. Appointment Booked notification
+      addNotification({
+        category: 'appointments',
+        icon: 'calendar',
+        title: 'Appointment Booked',
+        message: `Your appointment for ${pkg.name} has been successfully booked for ${displayDate} at ${displayTime}.`,
+        link: '/dashboard/customer/appointments',
+        eventId: `appt-booked-${newAppointment.id}`,
+      });
+
+      // 2. Payment Successful notification
+      addNotification({
+        category: 'system',
+        icon: 'check',
+        title: 'Payment Successful',
+        message: `Your payment of ${fmt(total)} for ${pkg.name} was processed successfully.`,
+        link: '/dashboard/customer/profile',
+        eventId: `pay-success-${newAppointment.id}`,
+      });
+      
       // Mark voucher as used ONLY after successful booking / payment
       if (appliedVoucher && voucherResult?.applies) {
         markVoucherUsed(appliedVoucher.id, currentUser?.uid);
+        // 3. Promotion/Voucher Redeemed notification
+        addNotification({
+          category: 'promotions',
+          icon: 'gift',
+          title: 'Promotion Redeemed',
+          message: `Your "${appliedVoucher.title}" promotion has been successfully applied to your booking.`,
+          link: '/dashboard/customer/packages',
+          eventId: `voucher-used-${appliedVoucher.id}-${newAppointment.id}`,
+        });
       }
 
       // Award reward points idempotently with fixed values
       await awardBookingPoints(currentUser?.uid, newAppointment.id, pkg.name, customOptionCount);
+
+      // 4. Reward Points Added notification
+      if (pointsEarned > 0) {
+        addNotification({
+          category: 'rewards',
+          icon: 'star',
+          title: 'Reward Points Added',
+          message: `You've earned ${pointsEarned} reward points for your recent ${pkg.name}.`,
+          link: '/dashboard/customer/rewards',
+          eventId: `points-awarded-${newAppointment.id}`,
+        });
+      }
 
       showToast(`Payment of ${fmt(total)} confirmed! +${pointsEarned} reward points added.`, 'success');
       setIsSuccessModalOpen(true);

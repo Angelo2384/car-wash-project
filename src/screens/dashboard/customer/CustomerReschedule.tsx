@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useNotifications } from '../../../contexts/NotificationsContext';
 import { db } from '../../../lib/firebase';
 import { updateAppointment, calculateCallOutFee, type StoredAppointment } from '../../../lib/appointments';
 import { Button } from '../../../components/ui/Button';
@@ -21,6 +22,7 @@ export default function CustomerReschedule() {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser } = useAuth();
+  const { addNotification } = useNotifications();
   
   const appointment = location.state?.appointment as StoredAppointment | undefined;
 
@@ -111,6 +113,16 @@ export default function CustomerReschedule() {
       },
       currentUser?.uid
     );
+
+    addNotification({
+      category: 'appointments',
+      icon: 'clock',
+      title: 'Appointment Rescheduled',
+      message: `Your appointment for ${appointment.packageName} has been rescheduled to ${date} at ${time}.`,
+      link: '/dashboard/customer/appointments',
+      eventId: `appt-resched-${appointment.id}-${Date.now()}`,
+    });
+
     navigate('/dashboard/customer/appointments');
   };
 

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
+import { useNotifications } from '../../../contexts/NotificationsContext';
 import { Button } from '../../../components/ui/Button';
 import { getStoredAppointments, type StoredAppointment } from '../../../lib/appointments';
 import {
@@ -43,6 +44,7 @@ export default function CustomerReviews() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { showToast } = useToast();
+  const { addNotification } = useNotifications();
   const uid = currentUser?.uid;
 
   // Realtime reviews state
@@ -215,6 +217,26 @@ export default function CustomerReviews() {
     try {
       const res = await saveCustomerReview(newReview, uid);
       if (res.success) {
+        addNotification({
+          category: 'reviews',
+          icon: 'star',
+          title: 'Review Submitted',
+          message: `Thank you for reviewing your recent ${newReview.serviceName}. Your feedback helps us improve WashWizzy.`,
+          link: '/dashboard/customer/reviews',
+          eventId: `review-created-${newReview.id}`,
+        });
+
+        if (res.pointsAwarded && res.pointsAwarded > 0) {
+          addNotification({
+            category: 'rewards',
+            icon: 'star',
+            title: 'Reward Points Added',
+            message: `You've earned ${res.pointsAwarded} reward points for submitting your review.`,
+            link: '/dashboard/customer/rewards',
+            eventId: `review-pts-${newReview.id}`,
+          });
+        }
+
         showToast(
           res.pointsAwarded
             ? `Review submitted successfully! +${res.pointsAwarded} loyalty points earned.`
