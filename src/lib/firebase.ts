@@ -2,13 +2,15 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
+const env = import.meta.env || {};
+
 const firebaseConfig = {
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  projectId: env.VITE_FIREBASE_PROJECT_ID || 'car-wash-demo',
+  appId: env.VITE_FIREBASE_APP_ID || '1:123456:web:abcdef',
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || 'car-wash-demo.appspot.com',
+  apiKey: env.VITE_FIREBASE_API_KEY || 'AIzaSyDemoApiKeyForCarWashProject',
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || 'car-wash-demo.firebaseapp.com',
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || '1234567890',
 };
 
 export const app = initializeApp(firebaseConfig);
