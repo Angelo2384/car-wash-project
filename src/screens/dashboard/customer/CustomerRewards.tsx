@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../lib/firebase';
 import {
   Award,
   Sparkles,
@@ -30,6 +32,7 @@ import {
   LOYALTY_TIERS,
   TIER_ORDER,
   REWARDS_CATALOGUE,
+  REWARD_POINTS,
   getRewardsSummary,
   subscribeToRewards,
   getTierProgress,
@@ -37,6 +40,7 @@ import {
   redeemReward,
   recordReferralPoints,
   recordReviewPoints,
+  getRewardCooldownStatus,
   type RewardsSummary,
   type CatalogueReward,
   type RedeemedReward,
@@ -48,6 +52,28 @@ export default function CustomerRewards() {
   const { currentUser } = useAuth();
   const { showToast } = useToast();
   const uid = currentUser?.uid;
+
+  const [hasMembership, setHasMembership] = useState<boolean>(() => {
+    if (!uid) return false;
+    const cached = localStorage.getItem(`ww_has_membership_${uid}`);
+    return cached ? JSON.parse(cached) : false;
+  });
+
+  useEffect(() => {
+    if (!uid) return;
+    const unsub = onSnapshot(
+      doc(db, 'users', uid),
+      (snap) => {
+        if (snap.exists()) {
+          const mem = snap.data()?.hasMembership === true;
+          setHasMembership(mem);
+          localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(mem));
+        }
+      },
+      () => {}
+    );
+    return () => unsub();
+  }, [uid]);
 
   const [summary, setSummary] = useState<RewardsSummary>(() => getRewardsSummary(uid));
   const [activeTab, setActiveTab] = useState<'all' | 'available' | 'locked' | 'vouchers'>('all');
@@ -76,7 +102,7 @@ export default function CustomerRewards() {
     const unsubscribe = subscribeToRewards(uid, (updatedSummary) => {
       setSummary({
         ...updatedSummary,
-        streakMonths: Math.max(updatedSummary.streakMonths || 1, streakInfo.streakMonths),
+        streakMonths: Math.max(updatedSummary.streakMonths || 0, streakInfo.streakMonths),
       });
     });
 
@@ -84,9 +110,21 @@ export default function CustomerRewards() {
   }, [uid]);
 
   const tierProgress = getTierProgress(summary.lifetimePoints);
-  const currentTierObj = LOYALTY_TIERS[summary.currentTier] || LOYALTY_TIERS.Bronze;
+  const currentTierObj = LOYALTY_TIERS[summary.currentTier] || LOYALTY_TIERS.Unranked;
   const nextTierObj = tierProgress.nextTier;
   const streakInfo = calculateStreakFromAppointments(getStoredAppointments(uid));
+  // Multiplier is strictly restricted to active members
+  const effectiveMultiplier = hasMembership ? currentTierObj.multiplier : 1.0;
+  const effectiveStreakMultiplier = hasMembership ? streakInfo.multiplier : 1.0;
+
+  // Filter perks to never show multiplier perks to non-members
+  const displayedPerks = hasMembership
+    ? currentTierObj.perks
+    : currentTierObj.perks.filter(
+        (perk) =>
+          !perk.toLowerCase().includes('multiplier') &&
+          !perk.toLowerCase().includes('points on')
+      );
 
   // Referral code for current user
   const referralCode = `WW-${(currentUser?.displayName || 'WIZZY')
@@ -185,17 +223,19 @@ export default function CustomerRewards() {
     }
   };
 
-  // Filter catalogue items
+  // Filter catalogue items considering points balance, tier requirement, and 3-month cooldown
   const filteredRewards = REWARDS_CATALOGUE.filter((reward) => {
     const isAffordable = summary.pointsBalance >= reward.pointsCost;
     const tierRequirementMet =
       LOYALTY_TIERS[summary.currentTier].level >= LOYALTY_TIERS[reward.minTier].level;
+    const cooldown = getRewardCooldownStatus(reward.id, summary.redeemedRewards);
+    const isRedeemable = isAffordable && tierRequirementMet && !cooldown.onCooldown;
 
     if (activeTab === 'available') {
-      return isAffordable && tierRequirementMet;
+      return isRedeemable;
     }
     if (activeTab === 'locked') {
-      return !isAffordable || !tierRequirementMet;
+      return !isRedeemable;
     }
     return true;
   });
@@ -271,10 +311,19 @@ export default function CustomerRewards() {
                 </span>
                 <span className="text-base sm:text-lg font-bold text-[#35B86B]">PTS</span>
               </div>
-              <div className="flex items-center gap-4 text-xs sm:text-sm text-[#A1A1AA] mt-1">
+              <div className="flex items-center gap-4 text-xs sm:text-sm text-[#A1A1AA] mt-1 flex-wrap">
                 <span>Total Points Earned: <strong className="text-[#F5F5F5]">{summary.lifetimePoints.toLocaleString()} PTS</strong></span>
-                <span>•</span>
-                <span>Booster Rate: <strong className="text-[#E86A33]">{currentTierObj.multiplier}x</strong></span>
+                {hasMembership && (
+                  <>
+                    <span>•</span>
+                    <span>
+                      Booster Rate:{' '}
+                      <strong className="text-[#E86A33]">
+                        {effectiveMultiplier}x
+                      </strong>
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -306,7 +355,7 @@ export default function CustomerRewards() {
               <div className="flex justify-between items-center text-[11px] text-[#71717A] mt-2 font-medium">
                 <span>{currentTierObj.name} ({currentTierObj.minPoints.toLocaleString()} PTS)</span>
                 <span>
-                  {nextTierObj ? `${nextTierObj.name} (${nextTierObj.minPoints.toLocaleString()} PTS)` : 'Ultimate (3,000+ PTS)'}
+                  {nextTierObj ? `${nextTierObj.name} (${nextTierObj.minPoints.toLocaleString()} PTS)` : 'Platinum (3,000+ PTS)'}
                 </span>
               </div>
             </div>
@@ -322,7 +371,7 @@ export default function CustomerRewards() {
             </div>
 
             <ul className="space-y-2 text-xs text-[#D8D5CF]">
-              {currentTierObj.perks.map((perk, idx) => (
+              {displayedPerks.map((perk, idx) => (
                 <li key={idx} className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-[#35B86B] shrink-0" />
                   <span>{perk}</span>
@@ -355,7 +404,9 @@ export default function CustomerRewards() {
             </h2>
           </div>
           <span className="text-xs text-[#A1A1AA]">
-            Higher tiers unlock bigger point multipliers & exclusive gifts
+            {hasMembership
+              ? 'Higher tiers unlock bigger point multipliers & exclusive gifts for active members'
+              : 'Higher tiers unlock exclusive gifts and premium car care perks'}
           </span>
         </div>
 
@@ -415,10 +466,12 @@ export default function CustomerRewards() {
                   </p>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-[#1F1F1F] flex items-center justify-between text-[11px]">
-                  <span className="text-[#71717A]">Multiplier</span>
-                  <span className="font-bold text-[#35B86B]">{tier.multiplier}x Points</span>
-                </div>
+                {hasMembership && (
+                  <div className="mt-4 pt-3 border-t border-[#1F1F1F] flex items-center justify-between text-[11px]">
+                    <span className="text-[#71717A]">Multiplier</span>
+                    <span className="font-bold text-[#35B86B]">{tier.multiplier}x Points</span>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -444,9 +497,11 @@ export default function CustomerRewards() {
                   Monthly Streak
                 </h3>
               </div>
-              <span className="text-[11px] font-bold text-[#E86A33] bg-[#E86A33]/15 px-2.5 py-0.5 rounded-full border border-[#E86A33]/30">
-                {streakInfo.multiplier}x Boost Active
-              </span>
+              {hasMembership && (
+                <span className="text-[11px] font-bold text-[#E86A33] bg-[#E86A33]/15 px-2.5 py-0.5 rounded-full border border-[#E86A33]/30">
+                  {effectiveStreakMultiplier}x Boost Active
+                </span>
+              )}
             </div>
 
             <div className="mt-4">
@@ -457,7 +512,9 @@ export default function CustomerRewards() {
                 <span className="text-xs text-[#35B86B] font-bold">Streak</span>
               </div>
               <p className="text-xs text-[#A1A1AA] mt-1.5 leading-relaxed">
-                {streakInfo.streakStatus}
+                {hasMembership
+                  ? streakInfo.streakStatus
+                  : `Book in ${new Date().toLocaleString('default', { month: 'long' })} to maintain and grow your activity streak.`}
               </p>
             </div>
 
@@ -466,7 +523,9 @@ export default function CustomerRewards() {
               <div className="flex justify-between items-center text-xs mb-2">
                 <span className="text-[#F5F5F5] font-medium">Next Milestone</span>
                 <span className="text-[#35B86B] font-bold">
-                  {streakInfo.nextMilestoneMonths} Months ({streakInfo.nextMilestoneMonths >= 6 ? '1.75x' : '1.5x'} pts)
+                  {hasMembership
+                    ? `${streakInfo.nextMilestoneMonths} Months (${streakInfo.nextMilestoneMonths >= 6 ? '1.75x' : '1.5x'} pts for members)`
+                    : `${streakInfo.nextMilestoneMonths} Months Milestone`}
                 </span>
               </div>
               <div className="w-full h-2 bg-[#1F1F1F] rounded-full overflow-hidden">
@@ -501,7 +560,7 @@ export default function CustomerRewards() {
                   How to Earn Points
                 </h3>
               </div>
-              <span className="text-xs text-[#71717A]">Multiply your earnings</span>
+              <span className="text-xs text-[#71717A]">Earn on every interaction</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mt-4">
@@ -515,7 +574,7 @@ export default function CustomerRewards() {
                     Book Washes
                   </h4>
                   <p className="text-xs text-[#A1A1AA] mt-1 leading-relaxed">
-                    Earn 2 PTS per R1 spent on any mobile wash or bespoke package.
+                    Earn 50 to 150+ PTS on every mobile wash and bespoke package.
                   </p>
                 </div>
                 <div className="mt-4 pt-2 border-t border-[#1F1F1F]">
@@ -539,7 +598,7 @@ export default function CustomerRewards() {
                     Refer Friends
                   </h4>
                   <p className="text-xs text-[#A1A1AA] mt-1 leading-relaxed">
-                    Give friends 15% off, earn <strong className="text-[#35B86B]">+250 PTS</strong> when they wash.
+                    Give friends 15% off, earn <strong className="text-[#35B86B]">+{REWARD_POINTS.REFERRAL} PTS</strong> when they wash.
                   </p>
                 </div>
                 <div className="mt-4 pt-2 border-t border-[#1F1F1F]">
@@ -563,7 +622,7 @@ export default function CustomerRewards() {
                     Service Reviews
                   </h4>
                   <p className="text-xs text-[#A1A1AA] mt-1 leading-relaxed">
-                    Leave feedback on your completed detail and receive <strong className="text-[#F59E0B]">+50 PTS</strong>.
+                    Leave feedback on your completed detail and receive <strong className="text-[#F59E0B]">+{REWARD_POINTS.REVIEW} PTS</strong>.
                   </p>
                 </div>
                 <div className="mt-4 pt-2 border-t border-[#1F1F1F]">
@@ -622,7 +681,7 @@ export default function CustomerRewards() {
                   : 'text-[#A1A1AA] hover:text-[#F5F5F5]'
               }`}
             >
-              Locked
+              Locked / Cooldown
             </button>
             <button
               onClick={() => setActiveTab('vouchers')}
@@ -643,16 +702,20 @@ export default function CustomerRewards() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mt-6">
             {filteredRewards.map((reward) => {
               const isAffordable = summary.pointsBalance >= reward.pointsCost;
+              const neededPoints = Math.max(0, reward.pointsCost - summary.pointsBalance);
               const requiredTier = LOYALTY_TIERS[reward.minTier];
               const tierMet = currentTierObj.level >= requiredTier.level;
-              const isUnlocked = isAffordable && tierMet;
+              const cooldown = getRewardCooldownStatus(reward.id, summary.redeemedRewards);
+              const isRedeemable = isAffordable && tierMet && !cooldown.onCooldown;
 
               return (
                 <div
                   key={reward.id}
                   className={`bg-[#101010] border rounded-2xl p-5 flex flex-col justify-between transition-all relative overflow-hidden group ${
-                    isUnlocked
+                    isRedeemable
                       ? 'border-[#2C2C2C] hover:border-[#35B86B]/50 hover:shadow-lg hover:shadow-[#35B86B]/5'
+                      : cooldown.onCooldown
+                      ? 'border-[#E86A33]/30 bg-[#14100E]/70'
                       : 'border-[#2C2C2C]/60 opacity-80'
                   }`}
                 >
@@ -661,9 +724,17 @@ export default function CustomerRewards() {
                       <div className="w-11 h-11 rounded-xl bg-[#1F1F1F] border border-[#2C2C2C] flex items-center justify-center shrink-0">
                         {getRewardIcon(reward.iconName)}
                       </div>
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase bg-[#1F1F1F] text-[#E86A33] border border-[#2C2C2C]">
-                        {reward.badgeText}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {cooldown.onCooldown && (
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase bg-[#E86A33]/15 text-[#E86A33] border border-[#E86A33]/30 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            Cooldown Active
+                          </span>
+                        )}
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase bg-[#1F1F1F] text-[#E86A33] border border-[#2C2C2C]">
+                          {reward.badgeText}
+                        </span>
+                      </div>
                     </div>
 
                     <h3 className="font-bold text-base text-[#F5F5F5] group-hover:text-[#35B86B] transition-colors">
@@ -673,8 +744,8 @@ export default function CustomerRewards() {
                       {reward.description}
                     </p>
 
-                    {/* Expiry / Requirements info */}
-                    <div className="mt-3 flex items-center gap-3 text-[11px] text-[#71717A]">
+                    {/* Expiry / Requirements / Cooldown info */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2.5 text-[11px] text-[#71717A]">
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3 text-[#71717A]" />
                         Valid for {reward.expiryDays} days
@@ -682,10 +753,15 @@ export default function CustomerRewards() {
                       {reward.minTier !== 'Bronze' && (
                         <span>• Requires {reward.minTier}</span>
                       )}
+                      {cooldown.onCooldown && (
+                        <span className="text-[#E86A33] font-semibold">
+                          • Available again: {cooldown.formattedAvailableDate}
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div className="mt-5 pt-4 border-t border-[#1F1F1F] flex items-center justify-between">
+                  <div className="mt-5 pt-4 border-t border-[#1F1F1F] flex items-center justify-between gap-2">
                     <div>
                       <span className="text-xs text-[#71717A] block font-medium">Cost</span>
                       <span className="text-base font-extrabold text-[#35B86B]">
@@ -693,23 +769,42 @@ export default function CustomerRewards() {
                       </span>
                     </div>
 
-                    {isUnlocked ? (
+                    {isRedeemable ? (
                       <button
                         onClick={() => setSelectedRewardToRedeem(reward)}
                         className="px-4 py-2 text-xs font-bold bg-[#35B86B] hover:bg-[#35B86B]/90 text-white rounded-xl shadow-md shadow-[#35B86B]/20 transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
                       >
-                        Redeem Now
+                        Redeem
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
+                    ) : cooldown.onCooldown ? (
+                      <div className="text-right">
+                        <button
+                          disabled
+                          className="px-3 py-1.5 text-xs font-semibold text-[#71717A] bg-[#1F1F1F] rounded-xl border border-[#2C2C2C] cursor-not-allowed opacity-75 flex items-center gap-1.5"
+                        >
+                          <Clock className="w-3.5 h-3.5 text-[#E86A33]" />
+                          Redeem unavailable
+                        </button>
+                        <span className="text-[10px] text-[#E86A33] font-medium block mt-1">
+                          Available again: {cooldown.formattedAvailableDate}
+                        </span>
+                      </div>
                     ) : !tierMet ? (
-                      <span className="px-3 py-1.5 text-xs font-medium text-[#71717A] bg-[#1F1F1F] rounded-xl border border-[#2C2C2C] flex items-center gap-1">
+                      <button
+                        disabled
+                        className="px-3 py-1.5 text-xs font-medium text-[#71717A] bg-[#1F1F1F] rounded-xl border border-[#2C2C2C] cursor-not-allowed flex items-center gap-1"
+                      >
                         <Lock className="w-3 h-3" />
                         {reward.minTier} Tier
-                      </span>
+                      </button>
                     ) : (
-                      <span className="px-3 py-1.5 text-xs font-medium text-[#A1A1AA] bg-[#1F1F1F] rounded-xl border border-[#2C2C2C]">
-                        Need {(reward.pointsCost - summary.pointsBalance).toLocaleString()} more pts
-                      </span>
+                      <button
+                        disabled
+                        className="px-3 py-1.5 text-xs font-medium text-[#A1A1AA] bg-[#1F1F1F] rounded-xl border border-[#2C2C2C] cursor-not-allowed"
+                      >
+                        You need {neededPoints.toLocaleString()} more points
+                      </button>
                     )}
                   </div>
                 </div>
@@ -935,6 +1030,10 @@ export default function CustomerRewards() {
                 <span className="text-[#71717A]">Voucher Validity</span>
                 <span className="text-[#D8D5CF]">{selectedRewardToRedeem.expiryDays} Days</span>
               </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[#71717A]">Redemption Frequency</span>
+                <span className="text-[#35B86B]">Once every 3 months</span>
+              </div>
             </div>
 
             <div className="flex gap-3">
@@ -1011,13 +1110,13 @@ export default function CustomerRewards() {
                   Refer a Friend
                 </h3>
                 <p className="text-xs text-[#35B86B] font-semibold">
-                  Earn +250 Points Per Referral
+                  Earn +{REWARD_POINTS.REFERRAL} Points Per Referral
                 </p>
               </div>
             </div>
 
             <p className="text-xs text-[#A1A1AA] leading-relaxed mb-4">
-              Share your unique referral link. When your friend registers and books their first mobile wash, they get 15% off and you automatically receive 250 PTS.
+              Share your unique referral link. When your friend registers and books their first mobile wash, they get 15% off and you automatically receive {REWARD_POINTS.REFERRAL} PTS.
             </p>
 
             {/* Link Copy Box */}
@@ -1066,7 +1165,7 @@ export default function CustomerRewards() {
                   isLoading={isSendingReferral}
                   className="py-2 text-xs font-semibold"
                 >
-                  Send Invite (+250 PTS)
+                  Send Invite (+{REWARD_POINTS.REFERRAL} PTS)
                 </Button>
               </div>
             </form>
@@ -1087,7 +1186,7 @@ export default function CustomerRewards() {
                   Rate Your Wash Experience
                 </h3>
                 <p className="text-xs text-[#F59E0B] font-semibold">
-                  Earn +50 Bonus Points
+                  Earn +{REWARD_POINTS.REVIEW} Bonus Points
                 </p>
               </div>
             </div>
@@ -1146,7 +1245,7 @@ export default function CustomerRewards() {
                   isLoading={isSubmittingReview}
                   className="py-2 text-xs font-semibold"
                 >
-                  Submit & Collect +50 PTS
+                  Submit & Collect +{REWARD_POINTS.REVIEW} PTS
                 </Button>
               </div>
             </form>

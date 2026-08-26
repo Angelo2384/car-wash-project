@@ -2,7 +2,19 @@ import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 import { getStoredAppointments, type StoredAppointment } from './appointments';
 
-export type TierName = 'Bronze' | 'Silver' | 'Gold' | 'Diamond' | 'Ultimate';
+/**
+ * Single source of truth for reward points across the application.
+ */
+export const REWARD_POINTS = {
+  REVIEW: 5,
+  REFERRAL: 50,
+  BOOKING_EXPRESS: 50,
+  BOOKING_PREMIUM: 100,
+  BOOKING_ELITE: 150,
+  BOOKING_CUSTOM_PER_OPTION: 15,
+} as const;
+
+export type TierName = 'Unranked' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
 
 export interface LoyaltyTier {
   name: TierName;
@@ -17,22 +29,33 @@ export interface LoyaltyTier {
 }
 
 export const LOYALTY_TIERS: Record<TierName, LoyaltyTier> = {
-  Bronze: {
-    name: 'Bronze',
-    level: 1,
+  Unranked: {
+    name: 'Unranked',
+    level: 0,
     minPoints: 0,
     maxPoints: 499,
     multiplier: 1.0,
+    badgeColor: 'text-[#71717A] bg-[#71717A]/10 border-[#71717A]/30',
+    glowColor: 'rgba(113, 113, 122, 0.15)',
+    perks: ['None'],
+    description: 'Earn 500 points on washes and activities to reach Bronze tier and unlock member rewards.',
+  },
+  Bronze: {
+    name: 'Bronze',
+    level: 1,
+    minPoints: 500,
+    maxPoints: 1199,
+    multiplier: 1.0,
     badgeColor: 'text-[#D97706] bg-[#D97706]/10 border-[#D97706]/30',
     glowColor: 'rgba(217, 119, 6, 0.15)',
-    perks: ['1x Points on All Bookings', 'Standard Scheduling', 'Seasonal Perks'],
-    description: 'Welcome to WashWizzy Rewards. Start earning points on every single wash.',
+    perks: ['1x Points Multiplier', 'Standard Scheduling', 'Seasonal Perks'],
+    description: 'Welcome to Bronze tier. Start earning points and rewards on every wash.',
   },
   Silver: {
     name: 'Silver',
     level: 2,
-    minPoints: 500,
-    maxPoints: 1199,
+    minPoints: 1200,
+    maxPoints: 1999,
     multiplier: 1.25,
     badgeColor: 'text-[#94A3B8] bg-[#94A3B8]/10 border-[#94A3B8]/30',
     glowColor: 'rgba(148, 163, 184, 0.15)',
@@ -42,39 +65,31 @@ export const LOYALTY_TIERS: Record<TierName, LoyaltyTier> = {
   Gold: {
     name: 'Gold',
     level: 3,
-    minPoints: 1200,
-    maxPoints: 1999,
+    minPoints: 2000,
+    maxPoints: 2999,
     multiplier: 1.5,
     badgeColor: 'text-[#F59E0B] bg-[#F59E0B]/10 border-[#F59E0B]/30',
     glowColor: 'rgba(245, 158, 11, 0.18)',
     perks: ['1.5x Points Multiplier', 'Priority Staff Assignment', 'Free Wheel & Rim Polish Voucher'],
     description: 'Gold members receive VIP treatment, faster scheduling, and high point bonuses.',
   },
-  Diamond: {
-    name: 'Diamond',
+  Platinum: {
+    name: 'Platinum',
     level: 4,
-    minPoints: 2000,
-    maxPoints: 2999,
-    multiplier: 1.75,
-    badgeColor: 'text-[#06B6D4] bg-[#06B6D4]/10 border-[#06B6D4]/30',
-    glowColor: 'rgba(6, 182, 212, 0.2)',
-    perks: ['1.75x Points Multiplier', 'Complimentary Hydrophobic Booster', 'Zero Cancellation Fees'],
-    description: 'Elite care with maximum flexibility, specialty coatings, and top priority.',
-  },
-  Ultimate: {
-    name: 'Ultimate',
-    level: 5,
     minPoints: 3000,
     maxPoints: null,
     multiplier: 2.0,
-    badgeColor: 'text-[#35B86B] bg-[#35B86B]/15 border-[#35B86B]/30',
-    glowColor: 'rgba(53, 184, 107, 0.25)',
+    badgeColor: 'text-[#38BDF8] bg-[#38BDF8]/15 border-[#38BDF8]/30',
+    glowColor: 'rgba(56, 189, 248, 0.25)',
     perks: ['2x Points on All Bookings', 'Dedicated Master Detailer', 'Annual Complimentary Full Detail'],
     description: 'The pinnacle of automotive luxury and bespoke car care privileges.',
   },
 };
 
-export const TIER_ORDER: TierName[] = ['Bronze', 'Silver', 'Gold', 'Diamond', 'Ultimate'];
+export const TIER_ORDER: TierName[] = ['Unranked', 'Bronze', 'Silver', 'Gold', 'Platinum'];
+
+export const MIN_REWARD_POINTS_COST = 500;
+export const REWARD_COOLDOWN_MONTHS = 3;
 
 export interface CatalogueReward {
   id: string;
@@ -93,7 +108,7 @@ export const REWARDS_CATALOGUE: CatalogueReward[] = [
     id: 'rw_fragrance_pack',
     title: 'Signature Fragrance Upgrade',
     description: 'Upgrade your interior freshness with custom organic scent mist and cabin deodorizer.',
-    pointsCost: 100,
+    pointsCost: 500,
     minTier: 'Bronze',
     category: 'addon',
     expiryDays: 45,
@@ -104,7 +119,7 @@ export const REWARDS_CATALOGUE: CatalogueReward[] = [
     id: 'rw_free_rim_shine',
     title: 'Free Rim Shine & Tire Gloss',
     description: 'Add a complimentary premium hydrophobic rim shine and tire glaze to your next wash.',
-    pointsCost: 150,
+    pointsCost: 500,
     minTier: 'Bronze',
     category: 'addon',
     expiryDays: 30,
@@ -115,7 +130,7 @@ export const REWARDS_CATALOGUE: CatalogueReward[] = [
     id: 'rw_10off_express',
     title: '10% Off Express Wash',
     description: 'Valid for any standard express exterior and interior clean booked online.',
-    pointsCost: 300,
+    pointsCost: 500,
     minTier: 'Bronze',
     category: 'discount',
     expiryDays: 30,
@@ -126,7 +141,7 @@ export const REWARDS_CATALOGUE: CatalogueReward[] = [
     id: 'rw_50off_ceramic_boost',
     title: '50% Off Ceramic Booster Spray',
     description: 'Half-price premium SiO2 ceramic spray coating for high gloss & water beading.',
-    pointsCost: 450,
+    pointsCost: 750,
     minTier: 'Silver',
     category: 'discount',
     expiryDays: 30,
@@ -137,7 +152,7 @@ export const REWARDS_CATALOGUE: CatalogueReward[] = [
     id: 'rw_interior_sanitization',
     title: 'Complimentary Ozone Sanitization',
     description: 'Medical-grade anti-bacterial ozone cabin mist to eliminate 99.9% of germs.',
-    pointsCost: 750,
+    pointsCost: 1000,
     minTier: 'Gold',
     category: 'free_service',
     expiryDays: 60,
@@ -149,13 +164,63 @@ export const REWARDS_CATALOGUE: CatalogueReward[] = [
     title: 'Complimentary Full Detail Service',
     description: 'Full comprehensive deep interior extraction, paint clay decontamination, and sealant.',
     pointsCost: 1500,
-    minTier: 'Diamond',
+    minTier: 'Platinum',
     category: 'free_service',
     expiryDays: 90,
     iconName: 'Crown',
     badgeText: 'VIP Reward',
   },
 ];
+
+export interface RewardCooldownStatus {
+  onCooldown: boolean;
+  lastRedeemedAt?: number;
+  availableAt?: number;
+  formattedAvailableDate?: string;
+  daysRemaining?: number;
+}
+
+/**
+ * Checks if a specific reward is currently on the 3-month redemption cooldown.
+ */
+export function getRewardCooldownStatus(
+  rewardId: string,
+  redeemedRewards: RedeemedReward[] = [],
+  now: number = Date.now()
+): RewardCooldownStatus {
+  const matching = (redeemedRewards || []).filter((r) => r.rewardId === rewardId);
+  if (matching.length === 0) {
+    return { onCooldown: false };
+  }
+
+  // Find the latest redemption of this specific reward
+  const latest = matching.reduce((prev, curr) => (curr.redeemedAt > prev.redeemedAt ? curr : prev));
+  const availableDate = new Date(latest.redeemedAt);
+  availableDate.setMonth(availableDate.getMonth() + REWARD_COOLDOWN_MONTHS);
+  const availableAt = availableDate.getTime();
+
+  if (now < availableAt) {
+    const formattedAvailableDate = availableDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    const daysRemaining = Math.max(1, Math.ceil((availableAt - now) / (1000 * 60 * 60 * 24)));
+    return {
+      onCooldown: true,
+      lastRedeemedAt: latest.redeemedAt,
+      availableAt,
+      formattedAvailableDate,
+      daysRemaining,
+    };
+  }
+
+  return {
+    onCooldown: false,
+    lastRedeemedAt: latest.redeemedAt,
+    availableAt,
+  };
+}
 
 export interface RewardTransaction {
   id: string;
@@ -193,31 +258,54 @@ export function getRewardsStorageKey(uid?: string | null): string {
 }
 
 /**
+ * Checks cached membership status for a user.
+ */
+export function getUserMembershipStatus(uid?: string | null): boolean {
+  if (!uid) return false;
+  try {
+    const cached = localStorage.getItem(`ww_has_membership_${uid}`);
+    return cached ? JSON.parse(cached) === true : false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Calculates booking reward points using FIXED per-package values.
  * Express = 50, Premium = 100, Elite = 150, Custom = 15 × selected options.
- * No price-based calculation, no membership/tier multipliers.
+ * Multipliers only apply to active members.
  */
 export function calculateBookingPoints(
   packageName: string,
-  customOptionCount: number = 0
+  customOptionCount: number = 0,
+  isMember: boolean = false,
+  tierMultiplier: number = 1.0
 ): number {
   const lower = packageName.toLowerCase();
-  if (lower.includes('express')) return 50;
-  if (lower.includes('premium')) return 100;
-  if (lower.includes('elite')) return 150;
-  if (lower.includes('custom')) return Math.max(15, customOptionCount * 15);
-  return 50; // safe fallback
+  let basePoints: number = REWARD_POINTS.BOOKING_EXPRESS;
+  if (lower.includes('express')) basePoints = REWARD_POINTS.BOOKING_EXPRESS;
+  else if (lower.includes('premium')) basePoints = REWARD_POINTS.BOOKING_PREMIUM;
+  else if (lower.includes('elite')) basePoints = REWARD_POINTS.BOOKING_ELITE;
+  else if (lower.includes('custom')) basePoints = Math.max(REWARD_POINTS.BOOKING_CUSTOM_PER_OPTION, customOptionCount * REWARD_POINTS.BOOKING_CUSTOM_PER_OPTION);
+
+  // Multipliers strictly apply ONLY to members
+  if (!isMember) {
+    return basePoints;
+  }
+
+  const multiplier = Math.max(1.0, tierMultiplier);
+  return Math.round(basePoints * multiplier);
 }
 
 /**
  * Resolves current tier based on lifetime points earned.
  */
 export function getTierForPoints(points: number): LoyaltyTier {
-  if (points >= 3000) return LOYALTY_TIERS.Ultimate;
-  if (points >= 2000) return LOYALTY_TIERS.Diamond;
-  if (points >= 1200) return LOYALTY_TIERS.Gold;
-  if (points >= 500) return LOYALTY_TIERS.Silver;
-  return LOYALTY_TIERS.Bronze;
+  if (points >= 3000) return LOYALTY_TIERS.Platinum;
+  if (points >= 2000) return LOYALTY_TIERS.Gold;
+  if (points >= 1200) return LOYALTY_TIERS.Silver;
+  if (points >= 500) return LOYALTY_TIERS.Bronze;
+  return LOYALTY_TIERS.Unranked;
 }
 
 /**
@@ -331,9 +419,98 @@ export function calculateStreakFromAppointments(appointments: StoredAppointment[
 }
 
 /**
+ * Resets all accounts and users to 0 points and Unranked tier.
+ * Preserves user profile, bookings, reviews, and memberships.
+ */
+export function resetAllExistingAccountPoints(uid?: string | null): void {
+  try {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
+
+    // 1. Scan and reset all localStorage rewards keys
+    const keysToReset: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('ww_rewards_') || key === 'ww_rewards_guest')) {
+        keysToReset.push(key);
+      }
+    }
+
+    keysToReset.forEach((key) => {
+      try {
+        const data = localStorage.getItem(key);
+        if (data) {
+          const parsed = JSON.parse(data);
+          const resetData: RewardsSummary = {
+            pointsBalance: 0,
+            lifetimePoints: 0,
+            currentTier: 'Unranked',
+            streakMonths: parsed.streakMonths ?? 0,
+            lastActivity: Date.now(),
+            transactions: [],
+            redeemedRewards: Array.isArray(parsed.redeemedRewards) ? parsed.redeemedRewards : [],
+          };
+          localStorage.setItem(key, JSON.stringify(resetData));
+        }
+      } catch {
+        // ignore single key parse error
+      }
+    });
+
+    // Also ensure guest key is initialized if not present
+    if (!localStorage.getItem('ww_rewards_guest')) {
+      const initialGuest: RewardsSummary = {
+        pointsBalance: 0,
+        lifetimePoints: 0,
+        currentTier: 'Unranked',
+        streakMonths: 0,
+        lastActivity: Date.now(),
+        transactions: [],
+        redeemedRewards: [],
+      };
+      localStorage.setItem('ww_rewards_guest', JSON.stringify(initialGuest));
+    }
+
+    // 2. If UID is provided or available, sync reset to Firestore
+    if (uid) {
+      const docRef = doc(db, 'users', uid, 'rewards', 'summary');
+      setDoc(
+        docRef,
+        {
+          pointsBalance: 0,
+          lifetimePoints: 0,
+          currentTier: 'Unranked',
+          transactions: [],
+          lastActivity: Date.now(),
+        },
+        { merge: true }
+      ).catch(() => {});
+    }
+
+    // Mark reset migration flag
+    localStorage.setItem('ww_points_reset_applied_v2', 'true');
+    window.dispatchEvent(new CustomEvent('ww_rewards_changed', { detail: { uid } }));
+  } catch (e) {
+    console.error('Failed to reset account points:', e);
+  }
+}
+
+// Auto-run migration on module load if not yet applied
+if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+  if (!localStorage.getItem('ww_points_reset_applied_v2')) {
+    resetAllExistingAccountPoints();
+  }
+}
+
+/**
  * Gets the current rewards summary for a given user from local cache.
  */
 export function getRewardsSummary(uid?: string | null): RewardsSummary {
+  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+    if (!localStorage.getItem('ww_points_reset_applied_v2')) {
+      resetAllExistingAccountPoints(uid);
+    }
+  }
+
   try {
     const key = getRewardsStorageKey(uid);
     const data = localStorage.getItem(key);
@@ -344,7 +521,7 @@ export function getRewardsSummary(uid?: string | null): RewardsSummary {
         pointsBalance: parsed.pointsBalance ?? 0,
         lifetimePoints: parsed.lifetimePoints ?? parsed.pointsBalance ?? 0,
         currentTier: tier.name,
-        streakMonths: parsed.streakMonths ?? 1,
+        streakMonths: parsed.streakMonths ?? 0,
         lastActivity: parsed.lastActivity ?? Date.now(),
         transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
         redeemedRewards: Array.isArray(parsed.redeemedRewards) ? parsed.redeemedRewards : [],
@@ -354,14 +531,14 @@ export function getRewardsSummary(uid?: string | null): RewardsSummary {
     console.error('Failed to parse rewards summary from localStorage', e);
   }
 
-  // Default baseline data for demo / newly created account
+  // Default baseline data for newly created account
   const defaultAppointments = getStoredAppointments(uid);
   const streakInfo = calculateStreakFromAppointments(defaultAppointments);
 
   const initialSummary: RewardsSummary = {
     pointsBalance: 0,
     lifetimePoints: 0,
-    currentTier: 'Bronze',
+    currentTier: 'Unranked',
     streakMonths: streakInfo.streakMonths,
     lastActivity: Date.now(),
     transactions: [],
@@ -378,6 +555,11 @@ export function saveRewardsSummary(summary: RewardsSummary, uid?: string | null)
   try {
     const key = getRewardsStorageKey(uid);
     localStorage.setItem(key, JSON.stringify(summary));
+
+    // Dispatch event for UI components listening for points updates
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ww_rewards_changed', { detail: { uid, summary } }));
+    }
 
     // Async sync to Firestore if user is authenticated
     if (uid) {
@@ -402,8 +584,25 @@ export function subscribeToRewards(
   const localData = getRewardsSummary(uid);
   callback(localData);
 
+  const handleCustomEvent = (e: Event) => {
+    const customEvt = e as CustomEvent;
+    if (!customEvt.detail || customEvt.detail.uid === uid) {
+      callback(getRewardsSummary(uid));
+    }
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('ww_rewards_changed', handleCustomEvent);
+    window.addEventListener('storage', handleCustomEvent);
+  }
+
   if (!uid) {
-    return () => {};
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('ww_rewards_changed', handleCustomEvent);
+        window.removeEventListener('storage', handleCustomEvent);
+      }
+    };
   }
 
   try {
@@ -419,7 +618,7 @@ export function subscribeToRewards(
             pointsBalance: remote.pointsBalance ?? 0,
             lifetimePoints: lifetime,
             currentTier: tier.name,
-            streakMonths: remote.streakMonths ?? 1,
+            streakMonths: remote.streakMonths ?? 0,
             lastActivity: remote.lastActivity ?? Date.now(),
             transactions: remote.transactions ?? [],
             redeemedRewards: remote.redeemedRewards ?? [],
@@ -435,15 +634,26 @@ export function subscribeToRewards(
       }
     );
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('ww_rewards_changed', handleCustomEvent);
+        window.removeEventListener('storage', handleCustomEvent);
+      }
+    };
   } catch {
-    return () => {};
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('ww_rewards_changed', handleCustomEvent);
+        window.removeEventListener('storage', handleCustomEvent);
+      }
+    };
   }
 }
 
 /**
  * Awards reward points for a completed booking.
- * Uses FIXED per-package values. No price-based calculation.
+ * Uses FIXED per-package values. Multipliers apply only to members.
  * GUARANTEED IDEMPOTENT: Will not award points twice for the same appointmentId.
  */
 export async function awardBookingPoints(
@@ -486,11 +696,14 @@ export async function awardBookingPoints(
     }
   }
 
-  const pointsToEarn = calculateBookingPoints(packageName, customOptionCount);
+  const isMember = getUserMembershipStatus(uid);
+  const currentTier = LOYALTY_TIERS[currentSummary.currentTier] || LOYALTY_TIERS.Unranked;
+  const pointsToEarn = calculateBookingPoints(packageName, customOptionCount, isMember, currentTier.multiplier);
+
   const newTransaction: RewardTransaction = {
     id: `tx-earn-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     type: 'earned',
-    description: `${packageName} Booking`,
+    description: `${packageName} Booking${isMember && currentTier.multiplier > 1 ? ` (${currentTier.multiplier}x Member Bonus)` : ''}`,
     points: pointsToEarn,
     appointmentId,
     createdAt: Date.now(),
@@ -519,7 +732,8 @@ export async function awardBookingPoints(
 
 /**
  * Redeems an available reward item from the catalogue.
- * Validates balance, tier requirement, and generates a unique voucher code.
+ * Validates authentication, minimum points, balance, tier requirement, 3-month cooldown,
+ * and generates a unique voucher code.
  */
 export async function redeemReward(
   uid: string | null | undefined,
@@ -530,13 +744,31 @@ export async function redeemReward(
   redeemedReward?: RedeemedReward;
   newBalance?: number;
 }> {
-  const currentSummary = getRewardsSummary(uid);
-  const reward = REWARDS_CATALOGUE.find((r) => r.id === rewardId);
-
-  if (!reward) {
-    return { success: false, error: 'Selected reward was not found.' };
+  // 1. Authentication check
+  if (!uid || typeof uid !== 'string' || uid.trim() === '') {
+    return {
+      success: false,
+      error: 'You must be signed in to redeem catalogue rewards.',
+    };
   }
 
+  // 2. Reward existence check
+  const reward = REWARDS_CATALOGUE.find((r) => r.id === rewardId);
+  if (!reward) {
+    return { success: false, error: 'Selected reward was not found in the catalogue.' };
+  }
+
+  // 3. Minimum points cost check (must be at least 500 points)
+  if (reward.pointsCost < MIN_REWARD_POINTS_COST) {
+    return {
+      success: false,
+      error: `Redeemable rewards must cost at least ${MIN_REWARD_POINTS_COST} points.`,
+    };
+  }
+
+  const currentSummary = getRewardsSummary(uid);
+
+  // 4. Points balance validation
   if (currentSummary.pointsBalance < reward.pointsCost) {
     const needed = reward.pointsCost - currentSummary.pointsBalance;
     return {
@@ -545,8 +777,8 @@ export async function redeemReward(
     };
   }
 
-  // Tier level requirement check
-  const currentTierObj = LOYALTY_TIERS[currentSummary.currentTier];
+  // 5. Tier level requirement check
+  const currentTierObj = LOYALTY_TIERS[currentSummary.currentTier] || LOYALTY_TIERS.Unranked;
   const requiredTierObj = LOYALTY_TIERS[reward.minTier];
   if (currentTierObj.level < requiredTierObj.level) {
     return {
@@ -555,7 +787,42 @@ export async function redeemReward(
     };
   }
 
-  // Generate unique voucher code e.g. WW-10OFF-8F92
+  // 6. 3-Month Cooldown validation (per specific reward)
+  const cooldownStatus = getRewardCooldownStatus(reward.id, currentSummary.redeemedRewards);
+  if (cooldownStatus.onCooldown) {
+    return {
+      success: false,
+      error: `This reward can only be redeemed once every 3 months. Available again on ${cooldownStatus.formattedAvailableDate}.`,
+    };
+  }
+
+  // 7. Verify remote Firestore data if available (prevent double redemption bypass)
+  try {
+    const docRef = doc(db, 'users', uid, 'rewards', 'summary');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const remoteData = snap.data() as Partial<RewardsSummary>;
+      if (remoteData.pointsBalance !== undefined && remoteData.pointsBalance < reward.pointsCost) {
+        return {
+          success: false,
+          error: `Insufficient points balance. You need ${(reward.pointsCost - remoteData.pointsBalance).toLocaleString()} more points.`,
+        };
+      }
+      if (Array.isArray(remoteData.redeemedRewards)) {
+        const remoteCooldown = getRewardCooldownStatus(reward.id, remoteData.redeemedRewards);
+        if (remoteCooldown.onCooldown) {
+          return {
+            success: false,
+            error: `This reward can only be redeemed once every 3 months. Available again on ${remoteCooldown.formattedAvailableDate}.`,
+          };
+        }
+      }
+    }
+  } catch {
+    // Continue with local guard if network check is temporarily unavailable
+  }
+
+  // All checks passed! Process redemption & deduct points
   const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
   const voucherCode = `WW-${reward.id.replace('rw_', '').toUpperCase()}-${randomSuffix}`;
   const now = Date.now();
@@ -601,14 +868,14 @@ export async function redeemReward(
 }
 
 /**
- * Simulates earning bonus points for referring a friend.
+ * Earning bonus points for referring a friend (50 points).
  */
 export async function recordReferralPoints(
   uid: string | null | undefined,
   friendName: string
 ): Promise<{ success: boolean; points: number }> {
   const currentSummary = getRewardsSummary(uid);
-  const referralPoints = 250;
+  const referralPoints = REWARD_POINTS.REFERRAL;
 
   const newTransaction: RewardTransaction = {
     id: `tx-ref-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -640,30 +907,54 @@ export async function recordReferralPoints(
 }
 
 /**
- * Records bonus points for reviewing a past service.
+ * Records bonus points for reviewing a service (5 points).
+ * Strictly idempotent: prevents duplicate point awards for the same review or appointment.
  */
 export async function recordReviewPoints(
   uid: string | null | undefined,
-  appointmentId: string,
+  reviewOrAppointmentId: string,
   rating: number
 ): Promise<{ success: boolean; points: number; alreadyAwarded?: boolean }> {
   const currentSummary = getRewardsSummary(uid);
 
   const existing = currentSummary.transactions.find(
-    (tx) => tx.appointmentId === appointmentId && tx.type === 'review'
+    (tx) =>
+      (tx.appointmentId === reviewOrAppointmentId || tx.id === reviewOrAppointmentId) &&
+      tx.type === 'review'
   );
 
   if (existing) {
     return { success: false, points: 0, alreadyAwarded: true };
   }
 
-  const reviewPoints = 50;
+  // Verify in Firestore if online
+  if (uid) {
+    try {
+      const docRef = doc(db, 'users', uid, 'rewards', 'summary');
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const remoteData = snap.data() as RewardsSummary;
+        const remoteTx = remoteData.transactions?.find(
+          (tx) =>
+            (tx.appointmentId === reviewOrAppointmentId || tx.id === reviewOrAppointmentId) &&
+            tx.type === 'review'
+        );
+        if (remoteTx) {
+          return { success: false, points: 0, alreadyAwarded: true };
+        }
+      }
+    } catch {
+      // Continue with local guard if network fails
+    }
+  }
+
+  const reviewPoints = REWARD_POINTS.REVIEW;
   const newTransaction: RewardTransaction = {
     id: `tx-rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     type: 'review',
-    description: `Service Rating (${rating} Stars)`,
+    description: `Service Review (${rating} Stars)`,
     points: reviewPoints,
-    appointmentId,
+    appointmentId: reviewOrAppointmentId,
     createdAt: Date.now(),
   };
 
@@ -817,4 +1108,5 @@ export function getVoucherDiscount(
     discountAmount: Math.min(packagePrice, 50),
   };
 }
+
 
