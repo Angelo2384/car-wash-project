@@ -401,8 +401,25 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       const { title, message, category, link, eventId, metadata } = input;
       const createdAt = Date.now();
       const visuals = getDefaultCategoryVisuals(category);
+      
+      const newNotif: AppNotification = {
+        id: `notif-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        userId: activeUid,
+        category,
+        icon: input.icon || visuals.icon,
+        iconColor: input.iconColor || visuals.iconColor,
+        iconBg: input.iconBg || visuals.iconBg,
+        title,
+        message,
+        time: "Just now",
+        isRead: false,
+        createdAt,
+        eventId,
+        link,
+        metadata,
+      };
 
-      let createdNotif: AppNotification | null = null;
+      let wasAdded = false;
 
       persistNotifications((prev) => {
         // Deduplication: check if same eventId exists
@@ -422,36 +439,21 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           return prev;
         }
 
-        const newNotif: AppNotification = {
-          id: `notif-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-          userId: activeUid,
-          category,
-          icon: input.icon || visuals.icon,
-          iconColor: input.iconColor || visuals.iconColor,
-          iconBg: input.iconBg || visuals.iconBg,
-          title,
-          message,
-          time: "Just now",
-          isRead: false,
-          createdAt,
-          eventId,
-          link,
-          metadata,
-        };
+        wasAdded = true;
+        return [newNotif, ...prev];
+      });
 
-        createdNotif = newNotif;
-
-        // Persist to Firestore
+      if (wasAdded) {
+        // Persist to Firestore outside the state updater to avoid React StrictMode double-invocation issues
         const notifDocRef = doc(db, "users", activeUid, "notifications", newNotif.id);
         setDoc(notifDocRef, newNotif).catch((err) => {
           console.warn("Failed to save notification in Firestore:", err);
         });
-
-        return [newNotif, ...prev];
-      });
-
-      window.dispatchEvent(new Event("storage"));
-      return createdNotif;
+        window.dispatchEvent(new Event("storage"));
+        return newNotif;
+      }
+      
+      return null;
     },
     [persistNotifications]
   );

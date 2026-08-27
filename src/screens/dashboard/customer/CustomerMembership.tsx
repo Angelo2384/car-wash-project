@@ -21,6 +21,7 @@ import { db } from "../../../lib/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { useNotifications } from "../../../contexts/NotificationsContext";
+import PaymentSuccessModal, { type PaymentSuccessInfo } from '../../../components/ui/PaymentSuccessModal';
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 
@@ -50,6 +51,8 @@ export default function CustomerMembership() {
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
   const [isPaying, setIsPaying] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [paymentSuccessInfo, setPaymentSuccessInfo] = useState<PaymentSuccessInfo | null>(null);
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
@@ -149,6 +152,7 @@ export default function CustomerMembership() {
         setIsCheckoutOpen(false);
 
         const feeStr = billingCycle === "monthly" ? "R199.00" : "R1,899.00";
+        const refCode = `WW-${Math.floor(100000 + Math.random() * 900000)}`;
         
         addNotification({
           category: 'membership',
@@ -172,6 +176,15 @@ export default function CustomerMembership() {
           `Payment of ${feeStr} confirmed! Diamond Elite Membership is now active.`,
           "success"
         );
+
+        // Show payment success modal with dynamic info
+        setPaymentSuccessInfo({
+          itemName: 'Diamond Elite Membership',
+          amount: feeStr,
+          paymentType: 'membership',
+          reference: refCode,
+        });
+        setShowPaymentSuccess(true);
       } catch (error) {
         console.error("Failed to update membership in Firestore:", error);
         setHasMembership(true);
@@ -182,6 +195,15 @@ export default function CustomerMembership() {
         setIsPaying(false);
         setIsCheckoutOpen(false);
         showToast("Diamond Elite Membership activated successfully!", "success");
+
+        const fallbackFee = billingCycle === "monthly" ? "R199.00" : "R1,899.00";
+        setPaymentSuccessInfo({
+          itemName: 'Diamond Elite Membership',
+          amount: fallbackFee,
+          paymentType: 'membership',
+          reference: `WW-${Math.floor(100000 + Math.random() * 900000)}`,
+        });
+        setShowPaymentSuccess(true);
       }
     }, 1000);
   };
@@ -843,6 +865,17 @@ export default function CustomerMembership() {
           </div>
         </div>
       )}
+      
+      {/* ── Success Confirmation Modal ── */}
+      <PaymentSuccessModal
+        open={showPaymentSuccess}
+        paymentInfo={paymentSuccessInfo}
+        onDone={() => {
+          setShowPaymentSuccess(false);
+          setPaymentSuccessInfo(null);
+        }}
+        doneText="Done"
+      />
     </div>
   );
 }
