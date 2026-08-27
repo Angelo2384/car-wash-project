@@ -29,6 +29,7 @@ import {
   type CustomerReview,
   type ReviewStats,
 } from '../../../lib/reviews';
+import { REWARD_POINTS } from '../../../lib/rewards';
 
 type SortOption = 'recent' | 'oldest' | 'highest' | 'lowest';
 
@@ -465,7 +466,7 @@ export default function CustomerReviews() {
             </div>
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30">
               <Award className="w-3.5 h-3.5" />
-              +50 PTS
+              +{REWARD_POINTS.REVIEW} PTS
             </span>
           </div>
 
@@ -701,7 +702,7 @@ export default function CustomerReviews() {
                   No Reviews Yet
                 </h3>
                 <p className="text-xs text-[#A1A1AA] mt-1 max-w-sm">
-                  Share your experience after your next car wash and earn +50 loyalty reward points.
+                  Share your experience after your next car wash and earn +{REWARD_POINTS.REVIEW} loyalty reward points.
                 </p>
               </div>
               <Button

@@ -150,7 +150,7 @@ export default function CustomerProfile() {
 
   const tierProgress = getTierProgress(rewardsSummary.lifetimePoints);
   const currentTierObj =
-    LOYALTY_TIERS[rewardsSummary.currentTier] || LOYALTY_TIERS.Bronze;
+    LOYALTY_TIERS[rewardsSummary.currentTier] || LOYALTY_TIERS.Unranked;
   const nextTierObj = tierProgress.nextTier;
 
   // ─── Real Reviews State ───────────────────────────────────────────────────

@@ -167,11 +167,12 @@ export async function saveCustomerReview(
       });
     }
 
-    // Award loyalty points for new reviews if appointmentId is present
+    // Award loyalty points for newly submitted reviews (5 pts)
     let pointsAwarded = 0;
-    if (existingIdx === -1 && review.appointmentId) {
+    if (existingIdx === -1) {
       try {
-        const ptsRes = await recordReviewPoints(uid, review.appointmentId, review.rating);
+        const reviewKey = review.appointmentId || review.id;
+        const ptsRes = await recordReviewPoints(uid, reviewKey, review.rating);
         if (ptsRes.success) {
           pointsAwarded = ptsRes.points;
         }

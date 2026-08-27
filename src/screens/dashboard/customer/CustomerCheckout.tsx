@@ -12,6 +12,8 @@ import { saveAppointment, calculateCallOutFee, type StoredAppointment } from '..
 import {
   calculateBookingPoints,
   awardBookingPoints,
+  getRewardsSummary,
+  LOYALTY_TIERS,
   getValidVouchers,
   getVoucherDiscount,
   markVoucherUsed,
@@ -177,8 +179,10 @@ export default function CustomerCheckout() {
   const vat = subtotal * VAT;
   const total = subtotal + vat;
 
-  // Fixed points calculation: Express=50, Premium=100, Elite=150, Custom=15*options
-  const pointsEarned = calculateBookingPoints(pkg.name, customOptionCount);
+  // Points calculation: Express=50, Premium=100, Elite=150, Custom=15*options (multipliers only apply to members)
+  const rewardsSummary = getRewardsSummary(currentUser?.uid);
+  const currentTierObj = LOYALTY_TIERS[rewardsSummary.currentTier] || LOYALTY_TIERS.Unranked;
+  const pointsEarned = calculateBookingPoints(pkg.name, customOptionCount, hasMembership, currentTierObj.multiplier);
 
   // Form State
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('card');
