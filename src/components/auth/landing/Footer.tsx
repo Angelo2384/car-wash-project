@@ -38,7 +38,6 @@ export default function Footer({ hideAccount = false }: FooterProps) {
           <div className={styles.colSmall}>
             <h4 className={styles.columnTitle}>Company</h4>
             <ul className={styles.linkList}>
-              <li><a href="/about" onClick={(e) => { e.preventDefault(); navigate('/about'); window.scrollTo(0, 0); }} className={styles.link}>About Us</a></li>
               <li><a href="#" className={styles.link}>Contact</a></li>
               <li><a href="#" className={styles.link}>Careers</a></li>
               <li><a href="#" className={styles.link}>Press</a></li>

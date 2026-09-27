@@ -118,7 +118,7 @@ const styles = {
   memberTierCol:
     "bg-charcoal-800 p-6 rounded-xl border border-burnt-orange/20 relative shadow-2xl shadow-charcoal-900/50",
   starBadge:
-    "absolute -top-3 -right-3 bg-burnt-orange text-white w-8 h-8 rounded-full flex items-center justify-center",
+    "absolute -top-4 -right-4 bg-burnt-orange text-white w-8 h-8 rounded-full flex items-center justify-center",
   starIcon: "w-4 h-4 fill-current",
   tierTitleOn:
     "text-sm font-bold tracking-widest uppercase text-burnt-orange mb-4",

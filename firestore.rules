@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 1. Helper Function: Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // 2. Helper Function: Check if the user is accessing their own data
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 3. Rules for user profiles and their subcollections
+    // (e.g. appointments, vehicles, reviews, paymentMethods)
+    match /users/{userId} {
+      // Users can only read/write their own user document
+      allow read, write: if isOwner(userId);
+
+      // Users can only read/write documents in their own subcollections
+      match /{subcollection}/{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // 4. Rule for staff registration 
+    match /pre_registered_staff/{document=**} {
+      // Anyone can read this to verify their email during signup
+      allow read: if true;
+      // Nobody can write from the client app directly for security
+      allow write: if false; 
+    }
+
+    // 5. Default fallback to lock down anything else not explicitly allowed above
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+  }
+}

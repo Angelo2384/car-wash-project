@@ -44,15 +44,14 @@ export default function Navbar() {
   }, []);
 
   const getNavLinkClass = (section: string) => {
-    return `${styles.navLink} ${(isHome && activeSection === section) || (!isHome && section === 'about') ? "text-burnt-orange font-bold" : "text-soft-gray"}`;
+    return `${styles.navLink} ${isHome && activeSection === section ? "text-burnt-orange font-bold" : "text-soft-gray"}`;
   };
 
   const getMobileNavLinkClass = (section: string) => {
-    return `${styles.mobileNavLink} ${(isHome && activeSection === section) || (!isHome && section === 'about') ? "text-burnt-orange font-bold" : "text-soft-gray"}`;
+    return `${styles.mobileNavLink} ${isHome && activeSection === section ? "text-burnt-orange font-bold" : "text-soft-gray"}`;
   };
 
   const getHref = (section: string) => {
-    if (section === 'about') return '/about';
     return isHome ? `#${section}` : `/#${section}`;
   };
 
@@ -74,9 +73,6 @@ export default function Navbar() {
           <div className={styles.desktopNavGroup}>
             <a href={getHref("home")} className={getNavLinkClass("home")}>
               Home
-            </a>
-            <a href={getHref("about")} onClick={(e) => { e.preventDefault(); navigate('/about'); }} className={getNavLinkClass("about")}>
-              About Us
             </a>
             <a href={getHref("services")} className={getNavLinkClass("services")}>
               Services
@@ -124,13 +120,6 @@ export default function Navbar() {
             className={getMobileNavLinkClass("home")}
           >
             Home
-          </a>
-          <a
-            href={getHref("about")}
-            onClick={(e) => { e.preventDefault(); setIsOpen(false); navigate('/about'); }}
-            className={getMobileNavLinkClass("about")}
-          >
-            About Us
           </a>
           <a
             href={getHref("services")}
