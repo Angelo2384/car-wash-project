@@ -19,18 +19,6 @@ export default function StaffActivation() {
   const { showToast } = useToast();
   const navigate = useNavigate();
 
-  const getPasswordStrength = () => {
-    if (!password) return 0;
-    let strength = 0;
-    if (password.length >= 8) strength += 25;
-    if (/[A-Z]/.test(password)) strength += 25;
-    if (/[0-9]/.test(password)) strength += 25;
-    if (/[^A-Za-z0-9]/.test(password)) strength += 25;
-    return strength;
-  };
-
-  const strength = getPasswordStrength();
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
@@ -156,21 +144,6 @@ export default function StaffActivation() {
               {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             </button>
           </div>
-          
-          {password && (
-            <div className="flex gap-1 mt-2 px-1">
-              {[1, 2, 3, 4].map((level) => (
-                <div 
-                  key={level} 
-                  className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                    strength >= level * 25 
-                      ? strength === 100 ? 'bg-reward-green' : strength >= 50 ? 'bg-burnt-orange' : 'bg-red-500'
-                      : 'bg-charcoal-700'
-                  }`}
-                />
-              ))}
-            </div>
-          )}
         </div>
 
         <div className="relative pt-1">

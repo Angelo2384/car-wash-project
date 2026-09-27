@@ -1,7 +1,6 @@
 import React from "react";
 import { Menu, X } from "lucide-react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import ThemeToggle from "../../ui/ThemeToggle";
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false);
@@ -89,14 +88,12 @@ export default function Navbar() {
           </div>
 
           <div className={styles.desktopButtonGroup}>
-            <ThemeToggle size={18} />
             <button className={styles.signInButton} onClick={() => navigate('/auth/login')}>Sign In</button>
             <button className={styles.getStartedButton} onClick={() => navigate('/auth/signup')}>Get Started</button>
           </div>
 
           {/* Mobile Toggle */}
           <div className={styles.mobileToggleGroup}>
-            <ThemeToggle size={18} className="mr-2" />
             <button
               onClick={() => setIsOpen(!isOpen)}
               className={styles.toggleButton}

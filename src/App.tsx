@@ -94,8 +94,8 @@ export default function App() {
             </Route>
             <Route path="/dashboard/admin" element={<AdminDashboard />} />
           </Routes>
-        </BrowserRouter>
-      </ToastProvider>
+          </BrowserRouter>
+        </ToastProvider>
     </AuthProvider>
   </ThemeProvider>
   );
