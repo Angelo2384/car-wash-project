@@ -345,28 +345,6 @@ export default function CustomerMembership() {
         />
       </div>
 
-      {/* ─── PAGE HEADER ─── */}
-      <div className="flex flex-col gap-2 relative z-10">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#E86A33]/15 text-[#E86A33] border border-[#E86A33]/30 shadow-sm">
-            <Crown className="w-3.5 h-3.5 text-[#E86A33]" />
-            VIP Club
-          </span>
-          {hasMembership && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30 shadow-sm">
-              <Sparkles className="w-3.5 h-3.5" />
-              Active Member
-            </span>
-          )}
-        </div>
-        <h1 className="text-3xl md:text-4xl font-extrabold font-display tracking-tight text-[#F5F5F5]">
-          Membership
-        </h1>
-        <p className="text-[#A1A1AA] text-sm md:text-[15px] max-w-2xl">
-          Enjoy unlimited zero-fee mobile call-outs, priority scheduling, exclusive discounts on all services, and accelerated reward points.
-        </p>
-      </div>
-
       {/* ─── HERO SECTION: "WASH MORE. SAVE MORE." ─── */}
       <div className="relative bg-[#171717] border border-[#2C2C2C] rounded-2xl overflow-hidden shadow-2xl">
         {/* Top ambient orange glow bar */}

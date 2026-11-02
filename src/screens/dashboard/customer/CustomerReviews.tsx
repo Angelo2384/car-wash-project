@@ -351,22 +351,6 @@ export default function CustomerReviews() {
 
   return (
     <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-forwards text-[#F5F5F5] pb-16">
-      {/* ─── 1. PAGE HEADER ─── */}
-      <div className="flex flex-col gap-1.5 border-b border-[#2C2C2C] pb-6">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#E86A33]/15 text-[#E86A33] border border-[#E86A33]/30">
-            <MessageSquare className="w-3.5 h-3.5 text-[#E86A33]" />
-            Customer Voice
-          </span>
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-extrabold font-display tracking-tight text-[#F5F5F5]">
-          My Reviews
-        </h1>
-        <p className="text-[#A1A1AA] text-sm sm:text-[15px] max-w-2xl leading-relaxed">
-          Manage and share feedback about your car wash experiences.
-        </p>
-      </div>
-
       {/* ─── 2. REVIEW STATISTICS CARDS ─── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Card 1: Total Reviews */}

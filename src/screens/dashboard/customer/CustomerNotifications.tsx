@@ -288,7 +288,6 @@ export default function CustomerNotifications() {
   const {
     notifications,
     clearedNotifications,
-    unreadCount,
     clearedCount,
     settings,
     updateSetting,
@@ -368,22 +367,6 @@ export default function CustomerNotifications() {
   return (
     <>
       <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-forwards text-[#F5F5F5]">
-        {/* Page Header */}
-        <div className="mb-1">
-          <div className="flex items-center gap-3 mb-2">
-            <Bell className="w-6 h-6 text-[#E86A33]" />
-            <h1 className="text-2xl font-bold text-white">Notifications</h1>
-            {unreadCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-[#E86A33] text-white text-[11px] font-bold uppercase tracking-wide">
-                {unreadCount} NEW
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-[#71717A]">
-            Stay up to date with your appointments, rewards, offers, and WashWizzy updates.
-          </p>
-        </div>
-
         <div className="flex flex-col xl:flex-row gap-6">
           {/* ── Left: Notification list ── */}
           <div className="flex-1 min-w-0">

@@ -18,13 +18,6 @@ export default function Hero() {
 
       <div className={styles.contentContainer}>
         <div className={styles.textContent}>
-          <div className={styles.badgeContainer}>
-            <span className={styles.badgeDot}></span>
-            <span className={styles.badgeText}>
-              Premium Mobile Service Available
-            </span>
-          </div>
-
           <h1 className={styles.heading}>
             Your Car.
             <br />
@@ -74,19 +67,15 @@ export default function Hero() {
 
 const styles = {
   section:
-    "relative pt-32 pb-20 md:pt-48 md:pb-32 overflow-hidden bg-charcoal text-white",
+    "relative pt-36 pb-14 md:pt-44 md:pb-20 overflow-hidden bg-charcoal text-white",
   backgroundContainer: "absolute inset-0 z-0",
-  backgroundImage: "w-full h-full object-cover opacity-40 mix-blend-overlay",
+  backgroundImage: "w-full h-full object-cover object-[50%_30%] opacity-40 mix-blend-overlay",
   gradientOverlayRight:
     "absolute inset-0 bg-gradient-to-r from-charcoal via-charcoal/80 to-transparent",
   gradientOverlayTop:
     "absolute inset-0 bg-gradient-to-t from-charcoal via-transparent to-transparent",
   contentContainer: "relative z-10 max-w-7xl mx-auto px-6 md:px-12",
   textContent: "max-w-3xl",
-  badgeContainer:
-    "inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/20 mb-8 backdrop-blur-md",
-  badgeDot: "w-2 h-2 rounded-full bg-burnt-orange animate-pulse",
-  badgeText: "text-xs font-semibold tracking-wider uppercase text-soft-gray",
   heading: "text-5xl md:text-7xl font-bold leading-[1.1] mb-6",
   highlightText: "text-burnt-orange",
   subheading:

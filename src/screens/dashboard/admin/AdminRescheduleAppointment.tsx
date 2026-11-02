@@ -196,12 +196,6 @@ export default function AdminRescheduleAppointment() {
           <ArrowLeft className="w-4 h-4 text-[#E86A33]" />
           Back to Appointments
         </button>
-        <h1 className="text-2xl sm:text-3xl font-bold font-display tracking-tight text-[#F5F5F5]">
-          Reschedule Appointment
-        </h1>
-        <p className="text-[#A1A1AA] text-sm">
-          Select a new schedule slot, record the reason, and update the booking. Owner-approved reschedules are marked Confirmed.
-        </p>
       </div>
 
       {/* Terminal State Alert */}

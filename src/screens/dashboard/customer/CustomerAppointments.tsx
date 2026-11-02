@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { doc, collection, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../../../contexts/AuthContext';
 import { db } from '../../../lib/firebase';
@@ -88,7 +88,12 @@ const DEFAULT_MOCK_APPOINTMENTS: StoredAppointment[] = [
 export default function CustomerAppointments() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'upcoming' | 'history'>('upcoming');
+  // ?id=<appointmentId> (e.g. from the dashboard) opens the right tab and highlights that booking
+  const [searchParams] = useSearchParams();
+  const focusId = searchParams.get('id');
+  const [chosenTab, setActiveTab] = useState<'upcoming' | 'history' | null>(() =>
+    searchParams.get('tab') === 'history' ? 'history' : null
+  );
   const [storedAppointments, setStoredAppointments] = useState<StoredAppointment[]>(() => {
     if (currentUser?.uid) {
       return getStoredAppointments(currentUser.uid);
@@ -206,14 +211,18 @@ export default function CustomerAppointments() {
     return dyn.status === 'Missed' || dyn.status === 'Completed' || dyn.status === 'Cancelled';
   });
 
+  const activeTab =
+    chosenTab ?? (focusId && historyAppointments.some((appt) => appt.id === focusId) ? 'history' : 'upcoming');
+
+  // Bring the linked booking into view once it has rendered
+  const focusedIsRendered = Boolean(focusId && allAppointments.some((appt) => appt.id === focusId));
+  useEffect(() => {
+    if (!focusId || !focusedIsRendered) return;
+    document.getElementById(`appointment-${focusId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusId, focusedIsRendered, activeTab]);
+
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-forwards text-[#F5F5F5]">
-      {/* TopHeader/Title area */}
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-bold font-display tracking-tight text-[#F5F5F5]">My Appointments</h2>
-        <p className="text-[#A1A1AA] text-sm">Manage your upcoming bookings and requests</p>
-      </div>
-
       {/* Tabs and Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#2C2C2C] pb-4">
         <div className="flex items-center gap-6">
@@ -256,6 +265,7 @@ export default function CustomerAppointments() {
                   <AppointmentCard
                     key={appt.id}
                     id={appt.id}
+                    isFocused={appt.id === focusId}
                     status={appt.status}
                     date={appt.date}
                     time={appt.time}
@@ -328,6 +338,7 @@ export default function CustomerAppointments() {
                   <AppointmentCard
                     key={appt.id}
                     id={appt.id}
+                    isFocused={appt.id === focusId}
                     status={appt.status}
                     date={appt.date}
                     time={appt.time}
@@ -390,8 +401,9 @@ export default function CustomerAppointments() {
 }
 
 // Helper component for the Card to keep code clean
-function AppointmentCard({ 
-  id: _id,
+function AppointmentCard({
+  id,
+  isFocused,
   status: rawStatus,
   date, 
   time, 
@@ -455,7 +467,12 @@ function AppointmentCard({
   const displayAddress = address || location;
 
   return (
-    <div className="bg-[#171717] border border-[#2C2C2C] rounded-xl p-5 flex flex-col md:flex-row gap-6 transition-colors hover:border-[#E86A33]/40 shadow-sm">
+    <div
+      id={`appointment-${id}`}
+      className={`bg-[#171717] border rounded-xl p-5 flex flex-col md:flex-row gap-6 transition-colors hover:border-[#E86A33]/40 shadow-sm scroll-mt-24 ${
+        isFocused ? 'border-[#E86A33] ring-2 ring-[#E86A33]/25' : 'border-[#2C2C2C]'
+      }`}
+    >
       
       {/* Column 1: Status & Time */}
       <div className="flex-1 flex flex-col gap-3">

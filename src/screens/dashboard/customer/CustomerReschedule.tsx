@@ -216,8 +216,6 @@ export default function CustomerReschedule() {
           <ArrowLeft className="w-4 h-4 text-[#E86A33]" />
           Back to Appointments
         </button>
-        <h2 className="text-2xl font-bold font-display tracking-tight text-[#F5F5F5]">Reschedule Appointment</h2>
-        <p className="text-[#A1A1AA] text-sm">Choose a new date and time for your booking</p>
       </div>
 
       {/* Terminal State Alert */}

@@ -215,14 +215,6 @@ export default function AdminServiceManagement() {
 
   return (
     <div className="w-full space-y-6">
-      {/* ─── Page Heading ─── */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl sm:text-3xl font-bold font-display tracking-tight text-[#F5F5F5]">
-          Service Management
-        </h1>
-        <p className="text-sm text-[#A1A1AA]">Manage all your services</p>
-      </div>
-
       {/* ─── Horizontal Toolbar ─── */}
       <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
         {/* Category filter buttons */}

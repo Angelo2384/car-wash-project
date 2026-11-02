@@ -3,15 +3,14 @@ import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   CalendarDays,
-  History,
   Gift,
   Star,
-  Settings,
   Bell,
   Crown,
   LogOut,
   MessageSquare,
   Info,
+  LifeBuoy,
   CalendarCheck,
   Clock,
   CheckCircle2,
@@ -19,9 +18,14 @@ import {
 import { signOut } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../../../lib/firebase";
+import { avatarUrl } from "../../../lib/cloudinary";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
 import ThemeToggle from "../../../components/ui/ThemeToggle";
+import ProfileChip from "../../../components/ui/ProfileChip";
+import Tooltip from "../../../components/ui/Tooltip";
+import PageHeading from "../../../components/ui/PageHeading";
+import { DASHBOARD_BAR_HEIGHT, findPageHeading, type PageHeadingDef } from "../../../lib/pageHeadings";
 import LogoutConfirmationModal from "../../../components/ui/LogoutConfirmationModal";
 import { useNotifications, type AppNotification } from "../../../contexts/NotificationsContext";
 
@@ -136,6 +140,27 @@ function BellDropdown({ onViewAll, onClose }: { onViewAll: () => void; onClose: 
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Page headings shown in the top bar ──────────────────────────────────────
+
+const PAGE_HEADINGS: PageHeadingDef[] = [
+  { path: "", title: "Dashboard", description: "Your bookings, rewards and membership at a glance" },
+  { path: "appointments/reschedule", title: "Reschedule appointment", description: "Choose a new date and time for your booking" },
+  { path: "appointments/cancel", title: "Cancel booking", description: "Cancel your booking and see what you'll be refunded" },
+  { path: "appointments", title: "My Appointments", description: "Manage your upcoming bookings and requests" },
+  { path: "packages", title: "Packages", description: "Choose the right package for your car" },
+  { path: "booking", title: "Book appointment", description: "Complete your booking details below" },
+  { path: "custom-package", title: "Build a custom package", description: "Pick individual services and see your price as you go" },
+  { path: "checkout", title: "Checkout", description: "Review your booking and complete payment" },
+  { path: "notifications", title: "Notifications", description: "Updates on your appointments, rewards and account" },
+  { path: "rewards", title: "Rewards", description: "Earn points on every wash and unlock perks" },
+  { path: "reviews", title: "My Reviews", description: "Share and manage feedback on your washes" },
+  { path: "membership", title: "Membership", description: "Zero call-out fees, priority scheduling and member discounts" },
+  { path: "profile", title: "My Profile", description: "Manage your account, vehicles and preferences" },
+  { path: "contact", title: "Contact Us", description: "Get help with a booking, payment or your account" },
+  { path: "about-us", title: "About Us", description: "Who we are and how WashWizzy works" },
+];
+
+
 export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -192,6 +217,8 @@ export default function DashboardLayout() {
     return cached ? JSON.parse(cached) : false;
   });
 
+  const [savedPhotoURL, setSavedPhotoURL] = useState<string | null>(null);
+
   useEffect(() => {
     if (!uid) return;
     const unsub = onSnapshot(
@@ -201,6 +228,7 @@ export default function DashboardLayout() {
           const mem = snap.data()?.hasMembership === true;
           setHasMembership(mem);
           localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(mem));
+          setSavedPhotoURL(snap.data()?.photoURL || null);
         }
       },
       (err) => {
@@ -228,11 +256,9 @@ export default function DashboardLayout() {
     currentUser?.displayName ||
     (uid ? localStorage.getItem(`ww_profile_name_${uid}`) : null) ||
     "Alex Burns";
-  const firstName = displayName.split(" ")[0] || "Alex";
+  const pageHeading = findPageHeading(location.pathname, "/dashboard/customer", PAGE_HEADINGS);
   const photoURL =
-    (uid ? localStorage.getItem(`ww_profile_avatar_${uid}`) : null) ||
-    currentUser?.photoURL ||
-    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150";
+    avatarUrl(savedPhotoURL || currentUser?.photoURL, 96);
 
   const navItems = [
     {
@@ -246,16 +272,6 @@ export default function DashboardLayout() {
       icon: <CalendarDays className="w-4 h-4" />,
     },
     {
-      name: "Notifications",
-      path: "/dashboard/customer/notifications",
-      icon: <Bell className="w-4 h-4" />,
-    },
-    {
-      name: "Packages",
-      path: "/dashboard/customer/packages",
-      icon: <History className="w-4 h-4" />,
-    },
-    {
       name: "Rewards",
       path: "/dashboard/customer/rewards",
       icon: <Gift className="w-4 h-4" />,
@@ -266,7 +282,11 @@ export default function DashboardLayout() {
       icon: <MessageSquare className="w-4 h-4" />,
     },
     { name: "Membership", path: "/dashboard/customer/membership", icon: <Star className="w-4 h-4" /> },
-    { name: "Contact Us", path: "/dashboard/customer/contact", icon: <Info className="w-4 h-4" /> },
+  ];
+
+  // Secondary links, kept small at the bottom of the sidebar
+  const supportItems = [
+    { name: "Contact Us", path: "/dashboard/customer/contact", icon: <LifeBuoy className="w-4 h-4" /> },
     { name: "About Us", path: "/dashboard/customer/about-us", icon: <Info className="w-4 h-4" /> },
   ];
 
@@ -287,12 +307,12 @@ export default function DashboardLayout() {
         {/* Sidebar */}
         <aside className="w-[240px] bg-[#171717] border-r border-[#2C2C2C] fixed inset-y-0 left-0 flex flex-col z-20">
           {/* Logo */}
-          <div className="h-[64px] flex items-center px-6 border-b border-[#2C2C2C]">
+          <div className={`${DASHBOARD_BAR_HEIGHT} flex items-center px-6 border-b border-[#2C2C2C]`}>
             <Link to="/dashboard/customer" className="flex items-center group">
               <img
-                src="/images/logo.png"
+                src={theme === "light" ? "/images/logo-light.png" : "/images/logo.png"}
                 alt="WashWizzy"
-                className="w-24 h-auto object-contain"
+                className="w-28 h-auto object-contain"
               />
             </Link>
           </div>
@@ -320,54 +340,31 @@ export default function DashboardLayout() {
             })}
           </nav>
 
-          {/* User Profile */}
-          <div className="p-4 border-t border-[#2C2C2C] mt-auto">
-            <Link
-              to="/dashboard/customer/profile"
-              className={`flex items-center gap-3 px-[16px] py-[11px] min-h-[48px] rounded-lg transition-colors cursor-pointer group ${
-                isProfileActive
-                  ? "bg-[rgba(232,106,51,0.10)] text-[#E86A33] border border-[#E86A33]/20"
-                  : "hover:bg-white/[0.04]"
-              }`}
-            >
-              <div className="w-8 h-8 rounded-full bg-[#1F1F1F] overflow-hidden shrink-0 border border-[#2C2C2C]">
-                <img
-                  src={photoURL}
-                  alt={displayName}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p
-                  className={`text-[13px] font-medium truncate ${
-                    isProfileActive ? "text-[#E86A33]" : "text-[#F5F5F5]"
+          {/* Support links + Log Out (the profile is reached from the avatar in the top bar) */}
+          <div className="px-4 py-3 border-t border-[#2C2C2C] mt-auto space-y-0.5">
+            {supportItems.map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <Link
+                  key={item.name}
+                  to={item.path}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`flex items-center gap-3 px-[16px] py-2 min-h-[40px] rounded-lg transition-all font-medium text-[13px] ${
+                    isActive
+                      ? "bg-[rgba(232,106,51,0.10)] text-[#E86A33]"
+                      : "text-[#71717A] hover:bg-white/[0.04] hover:text-[#F5F5F5]"
                   }`}
                 >
-                  {displayName}
-                </p>
-                <p
-                  className={`text-[11px] truncate mt-0.5 ${
-                    isProfileActive ? "text-[#E86A33]/80" : "text-[#A1A1AA]"
-                  }`}
-                >
-                  Manage Account
-                </p>
-              </div>
-              <Settings
-                className={`w-4 h-4 transition-colors ${
-                  isProfileActive
-                    ? "text-[#E86A33]"
-                    : "text-[#71717A] group-hover:text-[#A1A1AA]"
-                }`}
-              />
-            </Link>
-
-            {/* Log Out Button */}
+                  <div className="[&>svg]:w-4 [&>svg]:h-4">{item.icon}</div>
+                  {item.name}
+                </Link>
+              );
+            })}
             <button
               onClick={() => setIsLogoutModalOpen(true)}
-              className="mt-1.5 w-full flex items-center gap-3.5 px-[16px] py-[11px] min-h-[46px] rounded-lg transition-all font-medium text-[14px] text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#F5F5F5] cursor-pointer"
+              className="w-full flex items-center gap-3 px-[16px] py-2 min-h-[40px] rounded-lg transition-all font-medium text-[13px] text-[#71717A] hover:bg-white/[0.04] hover:text-[#F5F5F5] cursor-pointer"
             >
-              <div className="[&>svg]:w-[18px] [&>svg]:h-[18px]">
+              <div className="[&>svg]:w-4 [&>svg]:h-4">
                 <LogOut className="w-4 h-4" />
               </div>
               Log Out
@@ -378,56 +375,50 @@ export default function DashboardLayout() {
         {/* Main Content Area */}
         <main className="flex-1 ml-[240px] flex flex-col min-h-screen relative z-10">
           {/* Top Bar */}
-          <header className="h-[64px] bg-[#101010]/80 backdrop-blur-md shadow-md border-b border-[#2C2C2C] sticky top-0 z-30 px-8 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <p className="text-[14px] text-[#A1A1AA] font-medium">
-                Welcome back,
-              </p>
-              <h1 className="text-[14px] font-semibold text-[#F5F5F5]">
-                {firstName}
-              </h1>
-            </div>
+          <header className={`${DASHBOARD_BAR_HEIGHT} bg-[#101010]/80 backdrop-blur-md shadow-md border-b border-[#2C2C2C] sticky top-0 z-30 px-8 flex items-center justify-between`}>
+            <PageHeading heading={pageHeading} />
 
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
               {hasMembership ? (
                 <button
                   onClick={() => navigate("/dashboard/customer/membership")}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30 hover:bg-[#35B86B]/25 transition-colors cursor-pointer"
+                  className="flex items-center gap-2 h-9 px-4 rounded-lg text-[12px] font-bold uppercase tracking-wider bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30 hover:bg-[#35B86B]/25 transition-colors cursor-pointer"
                 >
-                  <Crown className="w-[14px] h-[14px] text-[#35B86B]" />
+                  <Crown className="w-4 h-4 text-[#35B86B]" />
                   Member
                 </button>
               ) : (
                 <button
                   onClick={() => navigate("/dashboard/customer/membership")}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-[#E86A33]/10 text-[#E86A33] hover:bg-[#E86A33]/20 transition-colors border border-[#E86A33]/20 cursor-pointer"
+                  className="flex items-center gap-2 h-9 px-4 rounded-lg text-[12px] font-bold uppercase tracking-wider bg-burnt-orange hover:bg-burnt-orange-dark text-white shadow-md shadow-burnt-orange/20 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E86A33]"
                 >
-                  <Crown className="w-[14px] h-[14px]" />
+                  <Crown className="w-4 h-4" />
                   Upgrade
                 </button>
               )}
 
-              <div className="h-5 w-px bg-[#2C2C2C]"></div>
+              <div className="h-5 w-px bg-[#2C2C2C]" aria-hidden="true"></div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
                 {/* Global Theme Toggle */}
                 <ThemeToggle size={18} />
 
                 {/* Bell: opens quick-preview dropdown */}
                 <div ref={bellRef} className="relative flex items-center justify-center">
-                  <button
-                    onClick={() => setBellOpen((o) => !o)}
-                    className="p-2 rounded-xl text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.06] transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#E86A33]/50 active:scale-95 relative flex items-center justify-center"
-                    aria-label="Notifications"
-                    title="Notifications"
-                  >
-                    <div className="relative w-5 h-5 flex items-center justify-center">
-                      <Bell className="w-[18px] h-[18px]" />
-                      {unreadCount > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#E86A33] rounded-full ring-2 ring-[#101010]" />
-                      )}
-                    </div>
-                  </button>
+                  <Tooltip label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"} disabled={bellOpen}>
+                    <button
+                      onClick={() => setBellOpen((o) => !o)}
+                      className="p-2 rounded-xl text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.06] transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#E86A33]/50 active:scale-95 relative flex items-center justify-center"
+                      aria-label="Notifications"
+                    >
+                      <div className="relative w-5 h-5 flex items-center justify-center">
+                        <Bell className="w-[18px] h-[18px]" />
+                        {unreadCount > 0 && (
+                          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#E86A33] rounded-full ring-2 ring-[#101010]" />
+                        )}
+                      </div>
+                    </button>
+                  </Tooltip>
                   {bellOpen && (
                     <BellDropdown
                       onClose={() => setBellOpen(false)}
@@ -439,16 +430,12 @@ export default function DashboardLayout() {
                   )}
                 </div>
 
-                <Link
+                <ProfileChip
+                  name={displayName}
+                  photoURL={photoURL}
                   to="/dashboard/customer/profile"
-                  className="w-8 h-8 rounded-full bg-[#1F1F1F] overflow-hidden border border-[#2C2C2C] hover:border-[#E86A33] transition-colors shrink-0 flex items-center justify-center ml-1"
-                >
-                  <img
-                    src={photoURL}
-                    alt={displayName}
-                    className="w-full h-full object-cover"
-                  />
-                </Link>
+                  active={isProfileActive}
+                />
               </div>
             </div>
           </header>

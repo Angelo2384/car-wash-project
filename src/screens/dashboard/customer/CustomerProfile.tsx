@@ -33,6 +33,7 @@ import { useToast } from "../../../contexts/ToastContext";
 import { useNotifications } from "../../../contexts/NotificationsContext";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
+import UserAvatar from "../../../components/ui/UserAvatar";
 import {
   getRewardsSummary,
   subscribeToRewards,
@@ -64,6 +65,12 @@ import {
   subscribeToPaymentMethods,
   type SavedPaymentMethod,
 } from "../../../lib/payments";
+import {
+  avatarUrl,
+  saveProfilePhotoUrl,
+  uploadProfileImage,
+  validateProfileImage,
+} from "../../../lib/cloudinary";
 
 const PREFERRED_PACKAGES = [
   "Express Wash",
@@ -74,7 +81,7 @@ const PREFERRED_PACKAGES = [
 
 export default function CustomerProfile() {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, refreshUser } = useAuth();
   const { showToast } = useToast();
   const { addNotification } = useNotifications();
   const uid = currentUser?.uid;
@@ -94,14 +101,9 @@ export default function CustomerProfile() {
     return localStorage.getItem(`ww_profile_phone_${uid}`) || "";
   });
 
-  const [profileAvatar, setProfileAvatar] = useState<string | null>(() => {
-    if (!uid) return currentUser?.photoURL || null;
-    return (
-      localStorage.getItem(`ww_profile_avatar_${uid}`) ||
-      currentUser?.photoURL ||
-      null
-    );
-  });
+  // Profile picture lives on Cloudinary; its URL is stored on users/{uid}.photoURL
+  const [profileAvatar, setProfileAvatar] = useState<string | null>(() => currentUser?.photoURL || null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   // ─── Real Membership State ────────────────────────────────────────────────
   const [hasMembership, setHasMembership] = useState<boolean>(() => {
@@ -126,6 +128,9 @@ export default function CustomerProfile() {
           }
           if (data?.phone && !localStorage.getItem(`ww_profile_phone_${uid}`)) {
             setProfilePhone(data.phone);
+          }
+          if (data?.photoURL) {
+            setProfileAvatar(data.photoURL);
           }
         }
       },
@@ -246,43 +251,30 @@ export default function CustomerProfile() {
   // Receipt Modal
   const [viewingReceipt, setViewingReceipt] = useState<StoredAppointment | null>(null);
 
-  // ─── Profile Initials Generator ───────────────────────────────────────────
-  const getInitials = (name: string) => {
-    if (!name || name.trim() === "") return "CW";
-    const parts = name.trim().split(" ");
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
-  };
-
   // ─── Profile Photo Upload Handler ─────────────────────────────────────────
-  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file || !auth.currentUser) return;
 
-    if (!file.type.startsWith("image/")) {
-      showToast("Please select a valid image file (PNG, JPG).", "error");
+    const problem = validateProfileImage(file);
+    if (problem) {
+      showToast(problem, "error");
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      showToast("Image size must be under 5MB.", "error");
-      return;
+    setIsUploadingAvatar(true);
+    try {
+      const url = await uploadProfileImage(file);
+      await saveProfilePhotoUrl(auth.currentUser, url);
+      setProfileAvatar(url);
+      refreshUser();
+      showToast("Profile photo updated.", "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Couldn't update your photo. Try again.", "error");
+    } finally {
+      setIsUploadingAvatar(false);
     }
-
-    const reader = new FileReader();
-    reader.onload = (loadEvt) => {
-      const base64 = loadEvt.target?.result as string;
-      if (base64) {
-        setProfileAvatar(base64);
-        if (uid) {
-          localStorage.setItem(`ww_profile_avatar_${uid}`, base64);
-        }
-        showToast("Profile avatar updated successfully!", "success");
-      }
-    };
-    reader.readAsDataURL(file);
   };
 
   // ─── Save Profile Details Handler ─────────────────────────────────────────
@@ -527,28 +519,6 @@ export default function CustomerProfile() {
 
   return (
     <div className="flex flex-col gap-8 pb-16 text-[#F5F5F5] animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-forwards">
-      {/* ─── 1. PAGE HEADER ─── */}
-      <div className="flex flex-col gap-1.5 border-b border-[#2C2C2C] pb-6">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#E86A33]/15 text-[#E86A33] border border-[#E86A33]/30">
-            <User className="w-3.5 h-3.5 text-[#E86A33]" />
-            Customer Account
-          </span>
-          {hasMembership && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30">
-              <Sparkles className="w-3.5 h-3.5" />
-              VIP Member
-            </span>
-          )}
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-extrabold font-display tracking-tight text-[#F5F5F5]">
-          My Profile
-        </h1>
-        <p className="text-[#A1A1AA] text-sm sm:text-[15px] max-w-2xl leading-relaxed">
-          Manage your personal account, vehicles, bookings, and preferences.
-        </p>
-      </div>
-
       {/* ─── 2. SECTION 1: PROFILE OVERVIEW & LOYALTY REWARDS ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Left: Profile Overview Card (7 cols) */}
@@ -561,34 +531,29 @@ export default function CustomerProfile() {
               {/* Avatar + Main Details */}
               <div className="flex items-center gap-4">
                 <div className="relative group/avatar">
-                  {profileAvatar ? (
-                    <img
-                      src={profileAvatar}
-                      alt={profileName}
-                      className="w-20 h-20 rounded-2xl object-cover border-2 border-[#E86A33] shadow-md bg-[#101010]"
-                    />
-                  ) : (
-                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#E86A33] to-[#FFA26B] flex items-center justify-center text-white font-extrabold text-2xl font-display shadow-md">
-                      {getInitials(profileName)}
-                    </div>
-                  )}
+                  <UserAvatar
+                    photoURL={avatarUrl(profileAvatar, 160)}
+                    className={`w-20 h-20 rounded-2xl shadow-md transition-opacity ${isUploadingAvatar ? "opacity-50" : ""}`}
+                    iconClassName="w-9 h-9"
+                  />
 
                   {/* Upload Avatar Overlay Button */}
                   <input
                     ref={avatarInputRef}
                     type="file"
-                    accept="image/png, image/jpeg, image/jpg"
+                    accept="image/png, image/jpeg, image/webp"
                     onChange={handleAvatarFileChange}
                     className="hidden"
                   />
                   <button
                     type="button"
+                    disabled={isUploadingAvatar}
                     onClick={() => avatarInputRef.current?.click()}
                     className="absolute -bottom-1 -right-1 p-1.5 rounded-lg bg-[#1F1F1F] border border-[#2C2C2C] text-[#A1A1AA] hover:text-[#E86A33] hover:border-[#E86A33] transition-colors shadow-lg cursor-pointer"
-                    title="Change Profile Photo"
-                    aria-label="Change Profile Photo"
+                    title={isUploadingAvatar ? "Uploading photo…" : "Change Profile Photo"}
+                    aria-label={isUploadingAvatar ? "Uploading photo" : "Change Profile Photo"}
                   >
-                    <Camera className="w-3.5 h-3.5" />
+                    <Camera className={`w-3.5 h-3.5 ${isUploadingAvatar ? "animate-pulse" : ""}`} />
                   </button>
                 </div>
 

@@ -20,11 +20,16 @@ import {
 import { signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../../../lib/firebase";
+import { avatarUrl } from "../../../lib/cloudinary";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
 import { useNotifications, type AppNotification } from "../../../contexts/NotificationsContext";
 import { useAdminNotificationSync } from "../../../hooks/useAdminNotificationSync";
 import ThemeToggle from "../../../components/ui/ThemeToggle";
+import ProfileChip from "../../../components/ui/ProfileChip";
+import Tooltip from "../../../components/ui/Tooltip";
+import PageHeading from "../../../components/ui/PageHeading";
+import { DASHBOARD_BAR_HEIGHT, findPageHeading, type PageHeadingDef } from "../../../lib/pageHeadings";
 import LogoutConfirmationModal from "../../../components/ui/LogoutConfirmationModal";
 
 // ─── Dropdown Icon Renderer ───────────────────────────────────────────────────
@@ -166,6 +171,18 @@ function AdminBellDropdown({
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Page titles shown in the top bar (pages don't render their own)
+const PAGE_HEADINGS: PageHeadingDef[] = [
+  { path: "", title: "Dashboard", description: "Today's bookings, staff and revenue at a glance" },
+  { path: "notifications", title: "Notifications", description: "Bookings, cancellations, payments and system alerts" },
+  { path: "service-management", title: "Service Management", description: "Manage the services and packages you offer" },
+  { path: "appointments/cancel", title: "Cancel appointment", description: "Give a reason and let the customer know" },
+  { path: "appointments/reschedule", title: "Reschedule appointment", description: "Pick a new slot and record why it changed" },
+  { path: "appointments", title: "Customer Appointments", description: "Approve, reschedule and cancel bookings in real time" },
+  { path: "business-analytics", title: "Business Analytics", description: "Revenue, bookings and customer trends" },
+  { path: "reviews", title: "Reviews", description: "What customers are saying about your washes" },
+];
+
 export default function AdminDashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -258,7 +275,7 @@ export default function AdminDashboardLayout() {
   if (!isAdmin) return <div className="min-h-screen bg-[#101010]" />;
 
   const displayName = currentUser.displayName || "Admin";
-  const firstName = displayName.split(" ")[0] || "Admin";
+  const pageHeading = findPageHeading(location.pathname, "/dashboard/admin", PAGE_HEADINGS);
 
   const navItems = [
     {
@@ -321,12 +338,12 @@ export default function AdminDashboardLayout() {
           }`}
         >
           {/* Logo */}
-          <div className="h-[64px] flex items-center justify-between px-6 border-b border-[#2C2C2C]">
+          <div className={`${DASHBOARD_BAR_HEIGHT} flex items-center justify-between px-6 border-b border-[#2C2C2C]`}>
             <Link to="/dashboard/admin" className="flex items-center group">
               <img
-                src="/images/logo.png"
+                src={theme === "light" ? "/images/logo-light.png" : "/images/logo.png"}
                 alt="WashWizzy"
-                className="w-24 h-auto object-contain"
+                className="w-28 h-auto object-contain"
               />
             </Link>
             <button
@@ -402,8 +419,8 @@ export default function AdminDashboardLayout() {
         {/* Main Content Area */}
         <main className="flex-1 lg:ml-[240px] flex flex-col min-h-screen relative z-10">
           {/* Top Bar */}
-          <header className="h-[64px] bg-[#101010]/80 backdrop-blur-md shadow-md border-b border-[#2C2C2C] sticky top-0 z-20 px-4 sm:px-8 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <header className={`${DASHBOARD_BAR_HEIGHT} bg-[#101010]/80 backdrop-blur-md shadow-md border-b border-[#2C2C2C] sticky top-0 z-20 px-4 sm:px-8 flex items-center justify-between`}>
+            <div className="flex items-center gap-3 min-w-0">
               {/* Mobile hamburger button */}
               <button
                 onClick={() => setMobileMenuOpen(true)}
@@ -413,37 +430,31 @@ export default function AdminDashboardLayout() {
                 <Menu className="w-5 h-5" />
               </button>
 
-              <div className="flex items-center gap-2">
-                <p className="text-[14px] text-[#A1A1AA] font-medium hidden sm:inline">
-                  Welcome back,
-                </p>
-                <h1 className="text-[14px] font-semibold text-[#F5F5F5]">
-                  {firstName}
-                </h1>
-              </div>
+              <PageHeading heading={pageHeading} />
             </div>
 
-            <div className="flex items-center gap-3 sm:gap-4">
+            <div className="flex items-center gap-2">
               {/* Global Theme Toggle */}
               <ThemeToggle size={18} />
 
-              <div className="h-5 w-px bg-[#2C2C2C]" />
+              <div className="h-5 w-px bg-[#2C2C2C]" aria-hidden="true" />
 
               {/* Notification Bell Dropdown */}
               <div ref={bellRef} className="relative flex items-center justify-center">
-                <button
-                  onClick={() => setBellOpen((o) => !o)}
-                  className="p-2 rounded-xl text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.06] transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#E86A33]/50 active:scale-95 relative flex items-center justify-center"
-                  aria-label="Notifications"
-                  title="Admin Notifications"
-                >
-                  <div className="relative w-5 h-5 flex items-center justify-center">
-                    <Bell className="w-[18px] h-[18px]" />
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#E86A33] rounded-full ring-2 ring-[#101010]" />
-                    )}
-                  </div>
-                </button>
+                <Tooltip label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"} disabled={bellOpen}>
+                  <button
+                    onClick={() => setBellOpen((o) => !o)}
+                    className="p-2 rounded-xl text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.06] transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#E86A33]/50 active:scale-95 relative flex items-center justify-center"
+                    aria-label="Notifications"
+                  >
+                    <div className="relative w-5 h-5 flex items-center justify-center">
+                      <Bell className="w-[18px] h-[18px]" />
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#E86A33] rounded-full ring-2 ring-[#101010]" />
+                      )}
+                    </div>
+                  </button>
+                </Tooltip>
                 {bellOpen && (
                   <AdminBellDropdown
                     onClose={() => setBellOpen(false)}
@@ -454,6 +465,8 @@ export default function AdminDashboardLayout() {
                   />
                 )}
               </div>
+
+              <ProfileChip name={displayName} photoURL={avatarUrl(currentUser.photoURL, 96)} />
             </div>
           </header>
 

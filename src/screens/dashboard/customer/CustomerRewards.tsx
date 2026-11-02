@@ -282,21 +282,11 @@ export default function CustomerRewards() {
     <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-forwards text-[#F5F5F5] pb-12">
       {/* ── 1. Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#2C2C2C] pb-6">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-extrabold font-display tracking-tight text-[#F5F5F5]">
-              Rewards
-            </h1>
-            <span
-              className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${currentTierObj.badgeColor}`}
-            >
-              {currentTierObj.name} Tier
-            </span>
-          </div>
-          <p className="text-sm text-[#A1A1AA] mt-1.5 max-w-xl leading-relaxed">
-            Unlock premium perks, discounts, and exclusive car care services.
-          </p>
-        </div>
+        <span
+          className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${currentTierObj.badgeColor}`}
+        >
+          {currentTierObj.name} Tier
+        </span>
 
         {/* Header Badges */}
         <div className="flex items-center gap-3 flex-wrap">

@@ -265,18 +265,6 @@ export default function StaffAppointments() {
     <div className="flex flex-col gap-6 text-[#F5F5F5] font-sans pb-12">
       {/* Header row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Calendar className="w-6 h-6 text-[#E86A33]" />
-          <div>
-            <h2 className="text-2xl font-bold font-display tracking-tight text-[#F5F5F5]">
-              My Assigned Jobs
-            </h2>
-            <p className="text-xs text-[#A1A1AA] mt-0.5">
-              Review and manage bookings assigned directly to you by the owner
-            </p>
-          </div>
-        </div>
-
         {/* Tab Pills */}
         <div className="flex flex-wrap items-center gap-1.5 bg-[#171717] p-1.5 rounded-xl border border-[#2C2C2C] self-start sm:self-auto">
           <button

@@ -122,336 +122,536 @@ body.light,
 }
 
 /* =========================================================================
-   LIGHT THEME OVERRIDES (High-Contrast, Crisp, Tailored WashWizzy Light Mode)
+   DASHBOARD LIGHT THEME
+   Applies only inside the customer / staff / admin dashboards (the layouts put
+   the theme class on their wrapper). Landing, login and sign-up are always dark.
+   Pages are written with dark utility colours; each one is mapped onto a small
+   set of light tokens here, so the whole app shifts consistently.
    ========================================================================= */
 
+@layer base {
 .light {
-  /* ── Global Backgrounds ── */
-  .bg-\[\#101010\],
-  .bg-charcoal-900,
-  [class*="\!bg-\[\#101010\]"] {
-    background-color: #F1F3F5 !important;
-  }
+  --lt-page: #F5F6F8;
+  --lt-surface: #FFFFFF;
+  --lt-surface-2: #F7F8FA;
+  --lt-surface-3: #EDEFF2;
+  --lt-border: #E5E7EB;
+  --lt-border-strong: #D1D5DB;
+  --lt-text: #111827;
+  --lt-text-2: #4B5563;
+  --lt-text-3: #6B7280;
+  --lt-text-4: #9CA3AF;
+  --lt-accent: #C2410C;
+  --lt-accent-strong: #9A3412;
+  --lt-green: #15803D;
+  --lt-amber: #B45309;
+  --lt-red: #DC2626;
+  --lt-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --lt-shadow-raised: 0 4px 12px -2px rgba(16, 24, 40, 0.08), 0 2px 4px -2px rgba(16, 24, 40, 0.05);
+  color-scheme: light;
+  color: var(--lt-text);
+}
 
-  .bg-\[\#101010\]\/80,
-  .bg-\[\#101010\]\/90,
-  .bg-\[\#101010\]\/60 {
-    background-color: rgba(255, 255, 255, 0.92) !important;
-  }
+/* Backgrounds */
+.light .bg-\[\#101010\],
+.light .bg-\[\#0B0B0B\],
+.light .bg-charcoal-900,
+.light .\!bg-\[\#101010\],
+.light .\!bg-\[\#0B0B0B\],
+.light .\!bg-charcoal-900 {
+  background-color: var(--lt-page) !important;
+}
+.light .bg-\[\#171717\],
+.light .bg-\[\#1A1A1A\],
+.light .bg-\[\#161616\],
+.light .bg-\[\#151515\],
+.light .bg-\[\#141414\],
+.light .bg-\[\#121212\],
+.light .bg-\[\#14100E\],
+.light .bg-\[\#18181B\],
+.light .bg-charcoal,
+.light .\!bg-\[\#171717\],
+.light .\!bg-\[\#1A1A1A\],
+.light .\!bg-\[\#161616\],
+.light .\!bg-\[\#151515\],
+.light .\!bg-\[\#141414\],
+.light .\!bg-\[\#121212\],
+.light .\!bg-\[\#14100E\],
+.light .\!bg-\[\#18181B\],
+.light .\!bg-charcoal {
+  background-color: var(--lt-surface) !important;
+}
+.light .bg-\[\#1F1F1F\],
+.light .bg-\[\#1C1C1C\],
+.light .bg-\[\#1E1E1E\],
+.light .bg-\[\#222\],
+.light .bg-\[\#232323\],
+.light .bg-\[\#242424\],
+.light .bg-charcoal-800,
+.light .\!bg-\[\#1F1F1F\],
+.light .\!bg-\[\#1C1C1C\],
+.light .\!bg-\[\#1E1E1E\],
+.light .\!bg-\[\#222\],
+.light .\!bg-\[\#232323\],
+.light .\!bg-\[\#242424\],
+.light .\!bg-charcoal-800 {
+  background-color: var(--lt-surface-2) !important;
+}
+.light .bg-\[\#2C2C2C\],
+.light .bg-\[\#3A3A3A\],
+.light .bg-\[\#3C3C3C\],
+.light .bg-charcoal-700,
+.light .\!bg-\[\#2C2C2C\],
+.light .\!bg-\[\#3A3A3A\],
+.light .\!bg-\[\#3C3C3C\],
+.light .\!bg-charcoal-700 {
+  background-color: var(--lt-surface-3) !important;
+}
+.light .bg-\[\#101010\]\/50,
+.light .bg-\[\#101010\]\/60,
+.light .bg-\[\#101010\]\/80,
+.light .bg-\[\#101010\]\/90,
+.light .bg-\[\#171717\]\/80,
+.light .bg-\[\#171717\]\/90,
+.light .bg-\[\#14100E\]\/70,
+.light .bg-charcoal\/80,
+.light .bg-charcoal\/95,
+.light .bg-charcoal-900\/90,
+.light .\!bg-\[\#101010\]\/50,
+.light .\!bg-\[\#101010\]\/60,
+.light .\!bg-\[\#101010\]\/80,
+.light .\!bg-\[\#101010\]\/90,
+.light .\!bg-\[\#171717\]\/80,
+.light .\!bg-\[\#171717\]\/90,
+.light .\!bg-\[\#14100E\]\/70,
+.light .\!bg-charcoal\/80,
+.light .\!bg-charcoal\/95,
+.light .\!bg-charcoal-900\/90 {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+}
+.light .bg-black\/40,
+.light .bg-black\/60,
+.light .bg-black\/70,
+.light .bg-black\/75,
+.light .bg-black\/80,
+.light .bg-black\/90,
+.light .\!bg-black\/40,
+.light .\!bg-black\/60,
+.light .\!bg-black\/70,
+.light .\!bg-black\/75,
+.light .\!bg-black\/80,
+.light .\!bg-black\/90 {
+  background-color: rgba(15, 23, 42, 0.45) !important;
+}
+.light .hover\:bg-\[\#171717\]:hover,
+.light .hover\:bg-\[\#1A1A1A\]:hover,
+.light .hover\:bg-\[\#161616\]:hover,
+.light .hover\:bg-\[\#151515\]:hover,
+.light .hover\:bg-\[\#141414\]:hover,
+.light .hover\:bg-\[\#121212\]:hover,
+.light .hover\:bg-\[\#14100E\]:hover,
+.light .hover\:bg-\[\#18181B\]:hover,
+.light .hover\:bg-\[\#1F1F1F\]:hover,
+.light .hover\:bg-\[\#1C1C1C\]:hover,
+.light .hover\:bg-\[\#1E1E1E\]:hover,
+.light .hover\:bg-\[\#222\]:hover,
+.light .hover\:bg-\[\#232323\]:hover,
+.light .hover\:bg-\[\#242424\]:hover,
+.light .hover\:bg-charcoal-800:hover,
+.light .hover\:\!bg-\[\#171717\]:hover,
+.light .hover\:\!bg-\[\#1A1A1A\]:hover,
+.light .hover\:\!bg-\[\#161616\]:hover,
+.light .hover\:\!bg-\[\#151515\]:hover,
+.light .hover\:\!bg-\[\#141414\]:hover,
+.light .hover\:\!bg-\[\#121212\]:hover,
+.light .hover\:\!bg-\[\#14100E\]:hover,
+.light .hover\:\!bg-\[\#18181B\]:hover,
+.light .hover\:\!bg-\[\#1F1F1F\]:hover,
+.light .hover\:\!bg-\[\#1C1C1C\]:hover,
+.light .hover\:\!bg-\[\#1E1E1E\]:hover,
+.light .hover\:\!bg-\[\#222\]:hover,
+.light .hover\:\!bg-\[\#232323\]:hover,
+.light .hover\:\!bg-\[\#242424\]:hover,
+.light .hover\:\!bg-charcoal-800:hover {
+  background-color: var(--lt-surface-3) !important;
+}
+.light .hover\:bg-white\/\[0\.02\]:hover,
+.light .hover\:bg-white\/\[0\.04\]:hover,
+.light .hover\:bg-white\/\[0\.05\]:hover,
+.light .bg-white\/\[0\.04\],
+.light .hover\:\!bg-white\/\[0\.02\]:hover,
+.light .hover\:\!bg-white\/\[0\.04\]:hover,
+.light .hover\:\!bg-white\/\[0\.05\]:hover,
+.light .\!bg-white\/\[0\.04\] {
+  background-color: rgba(17, 24, 39, 0.04) !important;
+}
+.light .hover\:bg-white\/\[0\.06\]:hover,
+.light .hover\:\!bg-white\/\[0\.06\]:hover {
+  background-color: rgba(17, 24, 39, 0.06) !important;
+}
 
-  header.bg-\[\#101010\]\/80,
-  header[class*="bg-[#101010]"] {
-    background-color: rgba(255, 255, 255, 0.94) !important;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06) !important;
-  }
+/* Borders */
+.light .border-\[\#2C2C2C\],
+.light .border-\[\#2C2C2C\]\/60,
+.light .border-\[\#2C2C2C\]\/50,
+.light .border-\[\#2C2C2C\]\/80,
+.light .border-\[\#2C2C2C\]\/40,
+.light .border-\[\#1F1F1F\],
+.light .border-\[\#1F1F1F\]\/60,
+.light .border-\[\#1F1F1F\]\/50,
+.light .border-\[\#1F1F1F\]\/80,
+.light .border-\[\#1F1F1F\]\/40,
+.light .border-\[\#232323\],
+.light .border-\[\#232323\]\/60,
+.light .border-\[\#232323\]\/50,
+.light .border-\[\#232323\]\/80,
+.light .border-\[\#232323\]\/40,
+.light .border-charcoal-700,
+.light .border-charcoal-800,
+.light .border-charcoal-700\/50,
+.light .disabled\:\!border-\[\#2C2C2C\]:disabled,
+.light .\!border-\[\#2C2C2C\],
+.light .\!border-\[\#2C2C2C\]\/60,
+.light .\!border-\[\#2C2C2C\]\/50,
+.light .\!border-\[\#2C2C2C\]\/80,
+.light .\!border-\[\#2C2C2C\]\/40,
+.light .\!border-\[\#1F1F1F\],
+.light .\!border-\[\#1F1F1F\]\/60,
+.light .\!border-\[\#1F1F1F\]\/50,
+.light .\!border-\[\#1F1F1F\]\/80,
+.light .\!border-\[\#1F1F1F\]\/40,
+.light .\!border-\[\#232323\],
+.light .\!border-\[\#232323\]\/60,
+.light .\!border-\[\#232323\]\/50,
+.light .\!border-\[\#232323\]\/80,
+.light .\!border-\[\#232323\]\/40,
+.light .\!border-charcoal-700,
+.light .\!border-charcoal-800,
+.light .\!border-charcoal-700\/50 {
+  border-color: var(--lt-border) !important;
+}
+.light .border-\[\#3C3C3C\],
+.light .border-\[\#3A3A3A\],
+.light .border-\[\#CBD5E1\],
+.light .border-charcoal-600,
+.light .\!border-\[\#3C3C3C\],
+.light .\!border-\[\#3A3A3A\],
+.light .\!border-\[\#CBD5E1\],
+.light .\!border-charcoal-600 {
+  border-color: var(--lt-border-strong) !important;
+}
+.light .hover\:border-\[\#3C3C3C\]:hover,
+.light .hover\:border-\[\#3A3A3A\]:hover,
+.light .hover\:border-\[\#2C2C2C\]:hover,
+.light .hover\:\!border-\[\#3C3C3C\]:hover,
+.light .hover\:\!border-\[\#3A3A3A\]:hover,
+.light .hover\:\!border-\[\#2C2C2C\]:hover {
+  border-color: var(--lt-border-strong) !important;
+}
+.light .divide-\[\#2C2C2C\] > :not(:last-child),
+.light .divide-\[\#2C2C2C\]\/50 > :not(:last-child),
+.light .divide-\[\#1F1F1F\] > :not(:last-child),
+.light .divide-\[\#1F1F1F\]\/50 > :not(:last-child),
+.light .divide-\[\#232323\] > :not(:last-child),
+.light .divide-\[\#232323\]\/50 > :not(:last-child) {
+  border-color: var(--lt-border) !important;
+}
 
-  /* Main Surface Cards, Sidebar & Modals */
-  .bg-\[\#171717\],
-  .bg-\[\#1A1A1A\],
-  .bg-\[\#181818\],
-  .bg-charcoal {
-    background-color: #FFFFFF !important;
-  }
+/* Text */
+.light .text-\[\#F5F5F5\],
+.light .text-\[\#E5E5E5\],
+.light .text-\[\#D4D4D4\],
+.light .text-\[\#D8D5CF\],
+.light .text-\[\#18181B\],
+.light .text-\[\#FFFFFF\],
+.light .text-white,
+.light .text-off-white,
+.light .\!text-\[\#F5F5F5\],
+.light .\!text-\[\#E5E5E5\],
+.light .\!text-\[\#D4D4D4\],
+.light .\!text-\[\#D8D5CF\],
+.light .\!text-\[\#18181B\],
+.light .\!text-\[\#FFFFFF\],
+.light .\!text-white,
+.light .\!text-off-white {
+  color: var(--lt-text) !important;
+}
+.light .text-\[\#A1A1AA\],
+.light .text-\[\#9CA3AF\],
+.light .text-soft-gray,
+.light .\!text-\[\#A1A1AA\],
+.light .\!text-\[\#9CA3AF\],
+.light .\!text-soft-gray {
+  color: var(--lt-text-2) !important;
+}
+.light .text-\[\#71717A\],
+.light .\!text-\[\#71717A\] {
+  color: var(--lt-text-3) !important;
+}
+.light .text-\[\#52525B\],
+.light .text-\[\#3C3C3C\],
+.light .text-\[\#3A3A3A\],
+.light .text-\[\#2C2C2C\],
+.light .text-charcoal-600,
+.light .text-charcoal-700,
+.light .\!text-\[\#52525B\],
+.light .\!text-\[\#3C3C3C\],
+.light .\!text-\[\#3A3A3A\],
+.light .\!text-\[\#2C2C2C\],
+.light .\!text-charcoal-600,
+.light .\!text-charcoal-700 {
+  color: var(--lt-text-4) !important;
+}
+.light .text-\[\#E86A33\],
+.light .text-\[\#FF8055\],
+.light .text-\[\#FFA26B\],
+.light .text-\[\#cc5a2a\],
+.light .text-\[\#d45b27\],
+.light .text-burnt-orange,
+.light .\!text-\[\#E86A33\],
+.light .\!text-\[\#FF8055\],
+.light .\!text-\[\#FFA26B\],
+.light .\!text-\[\#cc5a2a\],
+.light .\!text-\[\#d45b27\],
+.light .\!text-burnt-orange {
+  color: var(--lt-accent) !important;
+}
+.light .text-\[\#35B86B\],
+.light .text-reward-green,
+.light .text-emerald-400,
+.light .\!text-\[\#35B86B\],
+.light .\!text-reward-green,
+.light .\!text-emerald-400 {
+  color: var(--lt-green) !important;
+}
+.light .text-\[\#F59E0B\],
+.light .text-\[\#FBBF24\],
+.light .text-amber-400,
+.light .text-amber-500,
+.light .\!text-\[\#F59E0B\],
+.light .\!text-\[\#FBBF24\],
+.light .\!text-amber-400,
+.light .\!text-amber-500 {
+  color: var(--lt-amber) !important;
+}
+.light .text-red-300,
+.light .text-red-400,
+.light .text-red-500,
+.light .text-\[\#EF4444\],
+.light .\!text-red-300,
+.light .\!text-red-400,
+.light .\!text-red-500,
+.light .\!text-\[\#EF4444\] {
+  color: var(--lt-red) !important;
+}
+.light .text-sky-400,
+.light .text-sky-500,
+.light .text-blue-400,
+.light .text-blue-500,
+.light .\!text-sky-400,
+.light .\!text-sky-500,
+.light .\!text-blue-400,
+.light .\!text-blue-500 {
+  color: #0369A1 !important;
+}
+.light .text-\[\#A78BFA\],
+.light .\!text-\[\#A78BFA\] {
+  color: #6D28D9 !important;
+}
+.light .text-\[\#06B6D4\],
+.light .\!text-\[\#06B6D4\] {
+  color: #0E7490 !important;
+}
 
-  /* Secondary Surfaces, Wells & Inner Cards */
-  .bg-\[\#1F1F1F\],
-  .bg-\[\#141414\],
-  .bg-\[\#121212\],
-  .bg-\[\#232323\],
-  .bg-\[\#242424\],
-  .bg-charcoal-800 {
-    background-color: #F8FAFC !important;
-  }
+/* Hover text */
+.light .hover\:text-\[\#F5F5F5\]:hover,
+.light .hover\:text-white:hover,
+.light .hover\:\!text-\[\#F5F5F5\]:hover,
+.light .hover\:\!text-white:hover {
+  color: var(--lt-text) !important;
+}
+.light .hover\:text-\[\#A1A1AA\]:hover,
+.light .hover\:\!text-\[\#A1A1AA\]:hover {
+  color: var(--lt-text-2) !important;
+}
+.light .hover\:text-\[\#71717A\]:hover,
+.light .hover\:\!text-\[\#71717A\]:hover {
+  color: var(--lt-text-3) !important;
+}
+.light .hover\:text-\[\#E86A33\]:hover,
+.light .hover\:text-\[\#FF8055\]:hover,
+.light .hover\:text-\[\#FFA26B\]:hover,
+.light .hover\:text-\[\#cc5a2a\]:hover,
+.light .hover\:text-\[\#d45b27\]:hover,
+.light .hover\:\!text-\[\#E86A33\]:hover,
+.light .hover\:\!text-\[\#E86A33\]:hover,
+.light .hover\:\!text-\[\#FF8055\]:hover,
+.light .hover\:\!text-\[\#FFA26B\]:hover,
+.light .hover\:\!text-\[\#cc5a2a\]:hover,
+.light .hover\:\!text-\[\#d45b27\]:hover {
+  color: var(--lt-accent-strong) !important;
+}
+.light .hover\:text-red-300:hover,
+.light .hover\:text-red-400:hover,
+.light .hover\:\!text-red-300:hover,
+.light .hover\:\!text-red-400:hover {
+  color: #B91C1C !important;
+}
+.light .group:hover .group-hover\:text-\[\#E86A33\] {
+  color: var(--lt-accent-strong) !important;
+}
+.light .placeholder\:text-\[\#71717A\]::placeholder,
+.light .placeholder\:text-\[\#52525B\]::placeholder,
+.light .placeholder\:text-\[\#A1A1AA\]::placeholder,
+.light .placeholder\:text-\[\#9CA3AF\]::placeholder {
+  color: var(--lt-text-3) !important;
+}
+.light .disabled\:\!text-\[\#71717A\]:disabled {
+  color: var(--lt-text-4) !important;
+}
 
-  /* Subtle background container inside white card */
-  .bg-\[\#171717\] .bg-\[\#101010\],
-  .bg-charcoal .bg-\[\#101010\] {
-    background-color: #F8FAFC !important;
-  }
+/* White text stays white on solid colour fills (buttons, badges, photo overlays) */
+.light :is(.bg-burnt-orange, .bg-burnt-orange-dark, .bg-\[\#E86A33\], .bg-\[\#cc5a2a\], .bg-\[\#35B86B\], .bg-\[\#2da15d\],
+  .bg-reward-green, .bg-red-500, .bg-red-600, .bg-sky-500, .bg-blue-500, .btn-primary, .badge-solid, .\!bg-red-600, .\!bg-\[\#35B86B\],
+  [class*="from-[#E86A33]"][class*="bg-gradient"], [class*="from-[#E86A33]"][class*="bg-linear"]) :is(.text-white, .text-\[\#F5F5F5\], .\!text-white, .\!text-\[\#F5F5F5\]),
+.light :is(.bg-burnt-orange, .bg-burnt-orange-dark, .bg-\[\#E86A33\], .bg-\[\#cc5a2a\], .bg-\[\#35B86B\], .bg-\[\#2da15d\],
+  .bg-reward-green, .bg-red-500, .bg-red-600, .bg-sky-500, .bg-blue-500, .btn-primary, .badge-solid, .\!bg-red-600, .\!bg-\[\#35B86B\],
+  [class*="from-[#E86A33]"][class*="bg-gradient"], [class*="from-[#E86A33]"][class*="bg-linear"]):is(.text-white, .text-\[\#F5F5F5\], .\!text-white, .\!text-\[\#F5F5F5\]),
+.light [class*="bg-black/"]:is(.text-white),
+.light .hover\:bg-\[\#E86A33\]:hover.text-white {
+  color: #FFFFFF !important;
+}
 
-  .bg-charcoal-700 {
-    background-color: #E2E8F0 !important;
-  }
+/* Form labels read clearly (the shared Input uses a very dim grey) */
+.light label.text-\[\#52525B\],
+.light .dark\:text-soft-gray {
+  color: var(--lt-text-2) !important;
+}
 
-  /* ── Borders & Dividers ── */
-  .border-\[\#2C2C2C\],
-  .border-\[\#2C2C2C\]\/60,
-  .border-\[\#2C2C2C\]\/80,
-  .border-\[\#2C2C2C\]\/50,
-  .border-\[\#2C2C2C\]\/40,
-  .border-\[\#1F1F1F\],
-  .border-\[\#232323\],
-  .border-\[\#383838\],
-  .border-\[\#3C3C3C\],
-  .border-charcoal-700,
-  .border-charcoal-800,
-  [class*="\!border-\[\#2C2C2C\]"] {
-    border-color: #CBD5E1 !important;
-  }
+/* Inline-styled placeholders on the Packages page */
+.light [style*="rgb(16, 16, 16) 0%"],
+.light [style*="#101010 0%"] {
+  background: linear-gradient(135deg, #F3F4F6 0%, #E9EBEF 100%) !important;
+}
+.light button[style*="color: rgb(161, 161, 170)"] {
+  color: var(--lt-text-2) !important;
+  border-color: var(--lt-border-strong) !important;
+}
 
-  .divide-\[\#1F1F1F\] > :not([hidden]) ~ :not([hidden]),
-  .divide-\[\#2C2C2C\] > :not([hidden]) ~ :not([hidden]),
-  .divide-\[\#232323\] > :not([hidden]) ~ :not([hidden]) {
-    border-color: #CBD5E1 !important;
-  }
 
-  /* ── Text & Typography ── */
-  .text-\[\#F5F5F5\],
-  .text-\[\#E5E5E5\],
-  [class*="\!text-\[\#F5F5F5\]"],
-  h1, h2, h3, h4, h5, h6 {
-    color: #0F172A !important;
-  }
+/* Gradients and rings */
+.light .from-\[\#171717\],
+.light .from-\[\#171717\]\/60,
+.light .from-\[\#171717\]\/80,
+.light .from-\[\#101010\],
+.light .from-\[\#101010\]\/60,
+.light .from-\[\#101010\]\/80,
+.light .from-\[\#141414\],
+.light .from-\[\#141414\]\/60,
+.light .from-\[\#141414\]\/80,
+.light .\!from-\[\#171717\],
+.light .\!from-\[\#171717\]\/60,
+.light .\!from-\[\#171717\]\/80,
+.light .\!from-\[\#101010\],
+.light .\!from-\[\#101010\]\/60,
+.light .\!from-\[\#101010\]\/80,
+.light .\!from-\[\#141414\],
+.light .\!from-\[\#141414\]\/60,
+.light .\!from-\[\#141414\]\/80 {
+  --tw-gradient-from: var(--lt-surface) !important;
+}
+.light .via-\[\#141414\],
+.light .via-\[\#141414\]\/60,
+.light .via-\[\#101010\],
+.light .via-\[\#101010\]\/60,
+.light .\!via-\[\#141414\],
+.light .\!via-\[\#141414\]\/60,
+.light .\!via-\[\#101010\],
+.light .\!via-\[\#101010\]\/60 {
+  --tw-gradient-via: var(--lt-surface-2) !important;
+}
+.light .to-\[\#101010\],
+.light .\!to-\[\#101010\] {
+  --tw-gradient-to: var(--lt-page) !important;
+}
+.light .ring-\[\#101010\],
+.light .\!ring-\[\#101010\] {
+  --tw-ring-color: var(--lt-surface) !important;
+}
 
-  /* Prevent text-white from remaining invisible on light cards */
-  :not(button):not(a[class*="bg-"]):not([class*="badge"]) > .text-white,
-  p.text-white,
-  span.text-white:not(button *):not([class*="bg-"]):not([class*="badge"]),
-  label.text-white,
-  h1.text-white,
-  h2.text-white,
-  h3.text-white,
-  input.text-white {
-    color: #0F172A !important;
-  }
+/* Shadows: soft on light surfaces instead of heavy black */
+.light :is(.shadow-sm, .shadow, .shadow-md):not([class*="shadow-[#"]):not([class*="shadow-burnt"]) {
+  box-shadow: var(--lt-shadow) !important;
+}
+.light :is(.shadow-lg, .shadow-xl, .shadow-2xl, [class*="shadow-[0"]):not([class*="shadow-[#"]):not([class*="shadow-burnt"]) {
+  box-shadow: var(--lt-shadow-raised) !important;
+}
 
-  .text-\[\#A1A1AA\],
-  .text-\[\#D8D5CF\],
-  .text-soft-gray {
-    color: #475569 !important;
-  }
+/* Form controls */
+.light :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select) {
+  background-color: var(--lt-surface) !important;
+  border-color: var(--lt-border-strong) !important;
+  color: var(--lt-text) !important;
+}
+.light :is(input, textarea)::placeholder {
+  color: var(--lt-text-3) !important;
+  opacity: 1 !important;
+}
+.light :is(input, textarea, select):focus {
+  border-color: var(--lt-accent) !important;
+}
+.light option {
+  background-color: var(--lt-surface);
+  color: var(--lt-text);
+}
 
-  .text-\[\#71717A\] {
-    color: #64748B !important;
-  }
+/* Tables */
+.light table thead th {
+  background-color: var(--lt-surface-2) !important;
+  color: var(--lt-text-2) !important;
+  border-bottom: 1px solid var(--lt-border) !important;
+}
+.light table tbody td {
+  color: var(--lt-text) !important;
+  border-bottom: 1px solid var(--lt-border) !important;
+}
+.light table tbody tr:hover td {
+  background-color: var(--lt-surface-2) !important;
+}
 
-  .text-\[\#52525B\] {
-    color: #334155 !important;
-  }
+/* Interaction states. The mapped colours above are !important, so hover / focus / group-hover
+   changes need their own rules or they'd be frozen. These come last and win on specificity. */
+.light [class*="hover:border-[#E86A33]"]:hover,
+.light [class*="hover:!border-[#E86A33]"]:hover,
+.light .group:hover [class*="group-hover:border-[#E86A33]"] {
+  border-color: rgba(194, 65, 12, 0.55) !important;
+}
+.light .hover\:border-\[\#E86A33\]:hover,
+.light .hover\:\!border-\[\#E86A33\]:hover,
+.light [class*="focus:border-[#E86A33]"]:focus,
+.light [class*="focus:!border-[#E86A33]"]:focus {
+  border-color: var(--lt-accent) !important;
+}
+.light [class*="hover:border-[#35B86B]"]:hover { border-color: rgba(21, 128, 61, 0.5) !important; }
+.light [class*="hover:border-[#F59E0B]"]:hover,
+.light [class*="hover:border-amber-500"]:hover { border-color: rgba(180, 83, 9, 0.5) !important; }
 
-  .text-\[\#9CA3AF\] {
-    color: #475569 !important;
-  }
+.light [class*="hover:bg-[#E86A33]/"]:hover { background-color: rgba(232, 106, 51, 0.1) !important; }
+.light [class*="hover:bg-red-500/"]:hover { background-color: rgba(220, 38, 38, 0.08) !important; }
+.light :is(.hover\:bg-\[\#E86A33\], .hover\:\!bg-\[\#E86A33\], .hover\:bg-\[\#E86A33\]\/90):hover {
+  background-color: #E86A33 !important;
+  color: #FFFFFF !important;
+}
+.light :is(.hover\:bg-\[\#cc5a2a\], .hover\:bg-burnt-orange-dark):hover { background-color: #CC5A2A !important; }
+.light .hover\:bg-\[\#35B86B\]\/90:hover { background-color: #2DA15D !important; }
+.light :is(.hover\:bg-red-500, .hover\:bg-red-700, .hover\:\!bg-red-700):hover {
+  background-color: #B91C1C !important;
+  color: #FFFFFF !important;
+}
 
-  /* High-contrast burnt-orange text for clear readability on light backgrounds */
-  .text-\[\#E86A33\],
-  .text-burnt-orange {
-    color: #C2410C !important;
-  }
-
-  /* Colored buttons KEEP crisp white text */
-  button[class*="bg-burnt-orange"],
-  button[class*="bg-\[\#E86A33\]"],
-  button[class*="bg-\[\#35B86B\]"],
-  button[class*="bg-reward-green"],
-  button.btn-primary,
-  .btn-primary,
-  .bg-burnt-orange.text-white,
-  .bg-reward-green.text-white,
-  .badge-solid {
-    color: #FFFFFF !important;
-  }
-
-  /* ── Active & Hover Navigation States ── */
-  a.bg-\[rgba\(232\,106\,51\,0\.10\)\],
-  a[class*="bg-[rgba(232,106,51"] {
-    background-color: rgba(232, 106, 51, 0.12) !important;
-    color: #C2410C !important;
-    font-weight: 700 !important;
-    border: 1px solid rgba(232, 106, 51, 0.35) !important;
-  }
-
-  aside nav a:not([class*="bg-[rgba(232,106,51"]):hover {
-    background-color: #F1F5F9 !important;
-    color: #0F172A !important;
-  }
-
-  .hover\:bg-white\/\[0\.04\]:hover,
-  .hover\:bg-white\/\[0\.06\]:hover,
-  .hover\:bg-white\/\[0\.02\]:hover {
-    background-color: rgba(0, 0, 0, 0.05) !important;
-  }
-
-  .hover\:text-\[\#F5F5F5\]:hover {
-    color: #0F172A !important;
-  }
-
-  .hover\:bg-charcoal-800:hover {
-    background-color: #F1F5F9 !important;
-  }
-
-  /* Active tab indicator */
-  .border-b-2.border-\[\#E86A33\] {
-    border-color: #C2410C !important;
-  }
-
-  /* ── Inputs & Forms ── */
-  input,
-  textarea,
-  select,
-  input[class*="bg-\[\#101010\]"],
-  textarea[class*="bg-\[\#101010\]"],
-  select[class*="bg-\[\#101010\]"],
-  input[class*="bg-charcoal"],
-  textarea[class*="bg-charcoal"] {
-    background-color: #FFFFFF !important;
-    border-color: #CBD5E1 !important;
-    color: #0F172A !important;
-  }
-
-  input::placeholder,
-  textarea::placeholder,
-  input[class*="bg-\[\#101010\]"]::placeholder,
-  textarea[class*="bg-\[\#101010\]"]::placeholder,
-  input[class*="bg-charcoal"]::placeholder,
-  textarea[class*="bg-charcoal"]::placeholder,
-  .placeholder\:text-charcoal-600::placeholder {
-    color: #64748B !important;
-    opacity: 1 !important;
-  }
-
-  label {
-    color: #1E293B !important;
-  }
-
-  /* Input icon color */
-  .text-charcoal-700 {
-    color: #64748B !important;
-  }
-
-  select {
-    background-color: #FFFFFF !important;
-    color: #0F172A !important;
-    border-color: #CBD5E1 !important;
-  }
-
-  option {
-    background-color: #FFFFFF !important;
-    color: #0F172A !important;
-  }
-
-  /* ── Tables & Lists ── */
-  table thead th {
-    background-color: #F1F5F9 !important;
-    color: #334155 !important;
-    font-weight: 700 !important;
-    border-bottom: 2px solid #CBD5E1 !important;
-  }
-
-  table tbody td {
-    color: #1E293B !important;
-    border-bottom: 1px solid #E2E8F0 !important;
-  }
-
-  table tbody tr:hover td {
-    background-color: #F8FAFC !important;
-  }
-
-  /* ── Badges & Status Tags ── */
-  span[class*="bg-[#35B86B]/15"],
-  span[class*="bg-[#35B86B]/20"] {
-    background-color: rgba(53, 184, 107, 0.15) !important;
-    color: #15803D !important;
-    border-color: rgba(53, 184, 107, 0.35) !important;
-  }
-
-  span[class*="bg-[#E86A33]/15"],
-  span[class*="bg-[#E86A33]/20"] {
-    background-color: rgba(232, 106, 51, 0.15) !important;
-    color: #C2410C !important;
-    border-color: rgba(232, 106, 51, 0.35) !important;
-  }
-
-  span[class*="bg-[#1F1F1F]"] {
-    background-color: #E2E8F0 !important;
-    color: #334155 !important;
-    border-color: #CBD5E1 !important;
-  }
-
-  /* ── Notification Dropdown ── */
-  .bg-\[\#1E1E1E\] {
-    background-color: #FFF7ED !important;
-  }
-
-  /* ── Shadows ── */
-  .shadow-md,
-  .shadow-lg,
-  .shadow-xl,
-  .shadow-2xl {
-    box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04) !important;
-  }
-
-  /* ── Auth Card ── */
-  .bg-charcoal\/80 {
-    background-color: rgba(255, 255, 255, 0.95) !important;
-  }
-
-  .border-charcoal-700\/50 {
-    border-color: rgba(203, 213, 225, 0.8) !important;
-  }
-
-  .bg-charcoal.text-soft-gray\/60 {
-    background-color: #FFFFFF !important;
-    color: #64748B !important;
-  }
-
-  /* ── Cards & Surfaces ── */
-  .bg-gradient-to-br.from-\[\#171717\].via-\[\#141414\].to-\[\#101010\] {
-    background-image: linear-gradient(to bottom right, #FFFFFF, #FAF9F6, #F4F5F7) !important;
-  }
-
-  /* Progress bar track */
-  .bg-\[\#1F1F1F\].rounded-full {
-    background-color: #E2E8F0 !important;
-  }
-
-  /* Inner dividers */
-  .border-t.border-\[\#1F1F1F\],
-  .border-b.border-\[\#1F1F1F\] {
-    border-color: #CBD5E1 !important;
-  }
-
-  /* ── Toast ── */
-  .bg-charcoal-900\/90 {
-    background-color: rgba(255, 255, 255, 0.98) !important;
-    border-color: #CBD5E1 !important;
-  }
-
-  /* ── Modal backdrop ── */
-  .bg-black\/70,
-  .bg-black\/80 {
-    background-color: rgba(15, 23, 42, 0.5) !important;
-  }
-
-  /* ── Secondary & Outline Buttons ── */
-  .bg-charcoal-700.text-white {
-    background-color: #E2E8F0 !important;
-    color: #0F172A !important;
-    border-color: #CBD5E1 !important;
-  }
-
-  .border-charcoal-700.bg-transparent,
-  button.border-charcoal-700 {
-    border-color: #CBD5E1 !important;
-    color: #0F172A !important;
-    background-color: #FFFFFF !important;
-  }
-
-  button.border-charcoal-700:hover,
-  .border-charcoal-700.bg-transparent:hover {
-    border-color: #C2410C !important;
-    color: #C2410C !important;
-    background-color: #F8FAFC !important;
-  }
-
-  .text-soft-gray.hover\:text-white {
-    color: #475569 !important;
-  }
-
-  /* ── Misc ── */
-  .bg-charcoal-700.w-1.h-1.rounded-full {
-    background-color: #CBD5E1 !important;
-  }
+.light :is(.hover\:text-\[\#35B86B\], .hover\:\!text-\[\#35B86B\]):hover,
+.light .group:hover .group-hover\:text-\[\#35B86B\] { color: var(--lt-green) !important; }
+.light :is(.hover\:text-white, .hover\:text-black):hover { color: var(--lt-text) !important; }
 }
 
 @layer utilities {

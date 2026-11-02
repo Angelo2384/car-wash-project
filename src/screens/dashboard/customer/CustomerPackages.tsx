@@ -235,16 +235,6 @@ export default function CustomerPackages() {
         Back to Appointments
       </button>
 
-      {/* Page header */}
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl md:text-3xl font-bold font-display tracking-tight text-[#F5F5F5]">
-          What Packages we offer
-        </h2>
-        <p className="text-[#A1A1AA] text-sm md:text-[15px]">
-          Choose the perfect package for your car
-        </p>
-      </div>
-
       {/* Package cards grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {packages.map((pkg) => (

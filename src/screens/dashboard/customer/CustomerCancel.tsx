@@ -115,8 +115,6 @@ export default function CustomerCancel() {
           <ArrowLeft className="w-4 h-4 text-[#E86A33]" />
           Back to Appointments
         </button>
-        <h2 className="text-2xl font-bold font-display tracking-tight text-[#F5F5F5]">Cancellation</h2>
-        <p className="text-[#A1A1AA] text-sm">Cancel your booking</p>
       </div>
 
       {/* Terminal Warning if already modified by admin */}

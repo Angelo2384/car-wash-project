@@ -407,12 +407,6 @@ export default function CustomerCheckout() {
           <ArrowLeft className="w-4 h-4" />
           Back to Booking
         </button>
-        <h2 className="text-2xl md:text-3xl font-bold font-display tracking-tight text-[#F5F5F5]">
-          Checkout
-        </h2>
-        <p className="text-[#A1A1AA] text-sm md:text-[15px]">
-          Review your booking and complete payment
-        </p>
       </div>
 
       {/* ── Two-column layout ── */}

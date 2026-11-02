@@ -197,12 +197,6 @@ export default function CustomerBooking() {
           <ArrowLeft className="w-4 h-4" />
           Back to Packages
         </button>
-        <h2 className="text-2xl md:text-3xl font-bold font-display tracking-tight text-[#F5F5F5]">
-          Book Appointment
-        </h2>
-        <p className="text-[#A1A1AA] text-sm md:text-[15px]">
-          Complete your booking details below
-        </p>
       </div>
 
       {/* ── Two-column layout ── */}

@@ -319,16 +319,7 @@ export default function AdminAppointments() {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-forwards text-[#F5F5F5] font-sans pb-12">
       {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold font-display tracking-tight text-[#F5F5F5]">
-            Customer Appointments
-          </h1>
-          <p className="text-[#A1A1AA] text-sm mt-1">
-            Review and manage all incoming bookings, approve requests, reschedule, and handle cancellations in real time.
-          </p>
-        </div>
-
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4">
         <div className="flex items-center gap-3">
           <button
             onClick={() => {

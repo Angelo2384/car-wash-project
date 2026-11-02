@@ -17,9 +17,15 @@ import {
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "../../../lib/firebase";
+import { avatarUrl } from "../../../lib/cloudinary";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
 import ThemeToggle from "../../../components/ui/ThemeToggle";
+import ProfileChip from "../../../components/ui/ProfileChip";
+import UserAvatar from "../../../components/ui/UserAvatar";
+import Tooltip from "../../../components/ui/Tooltip";
+import PageHeading from "../../../components/ui/PageHeading";
+import { DASHBOARD_BAR_HEIGHT, findPageHeading, type PageHeadingDef } from "../../../lib/pageHeadings";
 import LogoutConfirmationModal from "../../../components/ui/LogoutConfirmationModal";
 import { useNotifications, type AppNotification } from "../../../contexts/NotificationsContext";
 
@@ -122,6 +128,14 @@ function BellDropdown({ onClose }: { onClose: () => void }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Page titles shown in the top bar (pages don't render their own)
+const PAGE_HEADINGS: PageHeadingDef[] = [
+  { path: "", title: "Dashboard", description: "Your jobs and walk-ins for today" },
+  { path: "appointments", title: "My Assigned Jobs", description: "Review and manage bookings the owner has assigned to you" },
+  { path: "reviews", title: "Reviews", description: "Feedback customers have left on your washes" },
+  { path: "profile", title: "My Profile", description: "Manage your staff account and details" },
+];
+
 export default function StaffDashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -179,11 +193,9 @@ export default function StaffDashboardLayout() {
     currentUser?.displayName ||
     (uid ? localStorage.getItem(`ww_profile_name_${uid}`) : null) ||
     "Staff Member";
-  const firstName = displayName.split(" ")[0] || "Staff";
+  const pageHeading = findPageHeading(location.pathname, "/dashboard/staff", PAGE_HEADINGS);
   const photoURL =
-    (uid ? localStorage.getItem(`ww_profile_avatar_${uid}`) : null) ||
-    currentUser?.photoURL ||
-    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150";
+    avatarUrl(currentUser?.photoURL, 96);
 
   // Navigation Items required for Staff Sidebar
   const navItems = [
@@ -236,12 +248,12 @@ export default function StaffDashboardLayout() {
           }`}
         >
           {/* Logo */}
-          <div className="h-[64px] flex items-center justify-between px-6 border-b border-[#2C2C2C]">
+          <div className={`${DASHBOARD_BAR_HEIGHT} flex items-center justify-between px-6 border-b border-[#2C2C2C]`}>
             <Link to="/dashboard/staff" className="flex items-center group">
               <img
-                src="/images/logo.png"
+                src={theme === "light" ? "/images/logo-light.png" : "/images/logo.png"}
                 alt="WashWizzy"
-                className="w-24 h-auto object-contain"
+                className="w-28 h-auto object-contain"
               />
             </Link>
             <button
@@ -289,13 +301,7 @@ export default function StaffDashboardLayout() {
                   : "hover:bg-white/[0.04]"
               }`}
             >
-              <div className="w-8 h-8 rounded-full bg-[#1F1F1F] overflow-hidden shrink-0 border border-[#2C2C2C]">
-                <img
-                  src={photoURL}
-                  alt={displayName}
-                  className="w-full h-full object-cover"
-                />
-              </div>
+              <UserAvatar photoURL={photoURL} />
               <div className="flex-1 min-w-0">
                 <p
                   className={`text-[13px] font-medium truncate ${
@@ -337,8 +343,8 @@ export default function StaffDashboardLayout() {
         {/* Main Content Area */}
         <main className="flex-1 lg:ml-[240px] flex flex-col min-h-screen relative z-10">
           {/* Top Bar */}
-          <header className="h-[64px] bg-[#101010]/80 backdrop-blur-md shadow-md border-b border-[#2C2C2C] sticky top-0 z-20 px-4 sm:px-8 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <header className={`${DASHBOARD_BAR_HEIGHT} bg-[#101010]/80 backdrop-blur-md shadow-md border-b border-[#2C2C2C] sticky top-0 z-20 px-4 sm:px-8 flex items-center justify-between`}>
+            <div className="flex items-center gap-3 min-w-0">
               {/* Mobile hamburger button */}
               <button
                 onClick={() => setMobileMenuOpen(true)}
@@ -348,52 +354,40 @@ export default function StaffDashboardLayout() {
                 <Menu className="w-5 h-5" />
               </button>
 
-              <div className="flex items-center gap-2">
-                <p className="text-[14px] text-[#A1A1AA] font-medium hidden sm:inline">
-                  Welcome back,
-                </p>
-                <h1 className="text-[14px] font-semibold text-[#F5F5F5]">
-                  {firstName}
-                </h1>
-              </div>
+              <PageHeading heading={pageHeading} />
             </div>
 
             {/* Top Navigation Right: Theme Toggle, Notifications, Profile (NO Upgrade button) */}
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
                 {/* Global Theme Toggle */}
                 <ThemeToggle size={18} />
 
                 {/* Notifications Bell Dropdown */}
                 <div ref={bellRef} className="relative flex items-center justify-center">
-                  <button
-                    onClick={() => setBellOpen((o) => !o)}
-                    className="p-2 rounded-xl text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.06] transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#E86A33]/50 active:scale-95 relative flex items-center justify-center"
-                    aria-label="Notifications"
-                    title="Staff Notifications"
-                  >
-                    <div className="relative w-5 h-5 flex items-center justify-center">
-                      <Bell className="w-[18px] h-[18px]" />
-                      {unreadCount > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#E86A33] rounded-full ring-2 ring-[#101010]" />
-                      )}
-                    </div>
-                  </button>
+                  <Tooltip label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"} disabled={bellOpen}>
+                    <button
+                      onClick={() => setBellOpen((o) => !o)}
+                      className="p-2 rounded-xl text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.06] transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#E86A33]/50 active:scale-95 relative flex items-center justify-center"
+                      aria-label="Notifications"
+                    >
+                      <div className="relative w-5 h-5 flex items-center justify-center">
+                        <Bell className="w-[18px] h-[18px]" />
+                        {unreadCount > 0 && (
+                          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#E86A33] rounded-full ring-2 ring-[#101010]" />
+                        )}
+                      </div>
+                    </button>
+                  </Tooltip>
                   {bellOpen && <BellDropdown onClose={() => setBellOpen(false)} />}
                 </div>
 
-                {/* Staff Avatar */}
-                <Link
+                <ProfileChip
+                  name={displayName}
+                  photoURL={photoURL}
                   to="/dashboard/staff/profile"
-                  className="w-8 h-8 rounded-full bg-[#1F1F1F] overflow-hidden border border-[#2C2C2C] hover:border-[#E86A33] transition-colors shrink-0 flex items-center justify-center ml-1"
-                  title="Staff Profile"
-                >
-                  <img
-                    src={photoURL}
-                    alt={displayName}
-                    className="w-full h-full object-cover"
-                  />
-                </Link>
+                  active={isProfileActive}
+                />
               </div>
             </div>
           </header>

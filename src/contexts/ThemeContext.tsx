@@ -28,27 +28,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return 'dark'; // WashWizzy default theme
   });
 
-  const applyThemeToDOM = (t: Theme) => {
-    const root = document.documentElement;
-    const body = document.body;
-    
-    if (t === 'light') {
-      root.classList.remove('dark');
-      root.classList.add('light');
-      root.setAttribute('data-theme', 'light');
-      body.classList.remove('dark');
-      body.classList.add('light');
-    } else {
-      root.classList.remove('light');
-      root.classList.add('dark');
-      root.setAttribute('data-theme', 'dark');
-      body.classList.remove('light');
-      body.classList.add('dark');
-    }
-  };
-
+  // Light mode is dashboard-only: each dashboard layout puts the `theme` class on its
+  // own wrapper. The document itself stays dark so the landing and auth pages never change.
   useEffect(() => {
-    applyThemeToDOM(theme);
     try {
       localStorage.setItem(THEME_STORAGE_KEY, theme);
       localStorage.setItem(THEME_STORAGE_KEY_LEGACY, theme);

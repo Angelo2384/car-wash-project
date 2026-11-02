@@ -164,12 +164,6 @@ export default function AdminCancelAppointment() {
           <ArrowLeft className="w-4 h-4 text-[#E86A33]" />
           Back to Appointments
         </button>
-        <h1 className="text-2xl sm:text-3xl font-bold font-display tracking-tight text-[#F5F5F5]">
-          Cancel Appointment
-        </h1>
-        <p className="text-[#A1A1AA] text-sm">
-          Review appointment details, specify a cancellation reason, and inform the customer.
-        </p>
       </div>
 
       {/* Terminal State Alert */}
