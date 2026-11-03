@@ -255,7 +255,7 @@ export default function CustomerMembership() {
             {/* Angled Backdrop Card */}
             <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border border-[#2C2C2C] bg-[#101010] group">
               <img
-                src="/images/member.png"
+                src="/images/member.webp"
                 alt="WashWizzy Premium Mobile Detailing Rig"
                 className="w-full h-full object-cover object-center transform group-hover:scale-105 transition-transform duration-700 opacity-90"
               />

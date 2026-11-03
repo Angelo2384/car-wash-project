@@ -15,7 +15,7 @@ export default function Footer({ hideAccount = false }: FooterProps) {
           <div className={styles.colLarge}>
             <div className={styles.logoContainer}>
               <img
-                src="/images/logo.png"
+                src="/images/logo.webp"
                 alt="WashWizzy Logo"
                 className={styles.logoImage}
               />

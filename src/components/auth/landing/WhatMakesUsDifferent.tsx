@@ -18,7 +18,7 @@ export default function WhatMakesUsDifferent() {
           <div className={styles.largeBlock}>
             <div className={styles.largeBlockBgImage}>
               <img
-                src="/images/come_to_us2.png"
+                src="/images/come_to_us2.webp"
                 alt="Detailing reflection"
                 className={styles.image}
               />

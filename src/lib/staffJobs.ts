@@ -9,6 +9,14 @@ import type { WorkType } from './staffOps';
  * bay jobs go straight to Washing → Done. Steps only move forward, and the crew
  * shares one status (any member can tap the next step).
  */
+/**
+ * Testing switch. Off (default): staff can move a job through its steps on any day, including
+ * past jobs that weren't finished, so the team can test status updates and reviews early.
+ * Set VITE_STRICT_JOB_TIMING=true in .env before launch: steps then only work on the job's day,
+ * and jobs whose time has passed show as missed.
+ */
+export const STRICT_JOB_TIMING = import.meta.env.VITE_STRICT_JOB_TIMING === 'true';
+
 export type JobStep = 'assigned' | 'on_way' | 'arrived' | 'washing' | 'done';
 
 export const JOB_STEPS: Record<WorkType, JobStep[]> = {

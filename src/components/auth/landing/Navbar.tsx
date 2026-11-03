@@ -61,7 +61,7 @@ export default function Navbar() {
           <div className={styles.logoGroup}>
             <Link to="/">
               <img
-                src="/images/logo.png"
+                src="/images/logo.webp"
                 alt="WashWizzy Logo"
                 className={styles.logoImage}
               />

@@ -19,7 +19,7 @@ export default function WhatWeOffer() {
           <div className={styles.card}>
             <div className={styles.cardBackground}>
               <img
-                src="/images/come_to_you.png"
+                src="/images/come_to_you.webp"
                 alt="Mobile car detailing service"
                 className={styles.cardImage1}
               />
@@ -47,7 +47,7 @@ export default function WhatWeOffer() {
           <div className={styles.cardAlt}>
             <div className={styles.cardBackground}>
               <img
-                src="/images/come_to_us.png"
+                src="/images/come_to_us.webp"
                 alt="Premium car wash facility"
                 className={styles.cardImage2}
               />

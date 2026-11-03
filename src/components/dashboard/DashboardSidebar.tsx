@@ -54,7 +54,7 @@ export default function DashboardSidebar({
         <div className={`${DASHBOARD_BAR_HEIGHT} flex items-center justify-between px-6 border-b border-[#2C2C2C] shrink-0`}>
           <Link to={homePath} className="flex items-center" onClick={onMobileClose}>
             <img
-              src={theme === "light" ? "/images/logo-light.png" : "/images/logo.png"}
+              src={theme === "light" ? "/images/logo-light.webp" : "/images/logo.webp"}
               alt="WashWizzy"
               className="w-28 h-auto object-contain"
             />

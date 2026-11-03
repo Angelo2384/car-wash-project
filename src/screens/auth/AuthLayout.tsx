@@ -9,7 +9,7 @@ export default function AuthLayout() {
       {/* Background */}
       <div className="absolute inset-0 z-0">
         <img 
-          src="/images/login.png"
+          src="/images/login.webp"
           alt="WashWizzy Background"
           className="w-full h-full object-cover mix-blend-luminosity opacity-20"
         />
@@ -23,7 +23,7 @@ export default function AuthLayout() {
         <div className="flex justify-center mb-4 mt-[-20px]">
           <Link to="/" className="inline-flex items-center group transition-transform hover:scale-105">
             <img
-              src="/images/logo.png"
+              src="/images/logo.webp"
               alt="WashWizzy Logo"
               className="h-36 w-auto object-contain drop-shadow-2xl -mb-4"
             />

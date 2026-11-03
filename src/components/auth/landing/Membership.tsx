@@ -6,7 +6,7 @@ export default function Membership() {
     <section id="membership" className={styles.section}>
       <div className={styles.backgroundContainer}>
         <img
-          src={`/images/member.png`}
+          src={`/images/member.webp`}
           alt="WashWizzy Membership"
           className={styles.backgroundImage}
         />

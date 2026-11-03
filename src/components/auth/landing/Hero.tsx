@@ -8,7 +8,7 @@ export default function Hero() {
     <section id="home" className={styles.section}>
       <div className={styles.backgroundContainer}>
         <img
-          src={`/images/main3.png`}
+          src={`/images/main3.webp`}
           alt="Professional car detailing in a modern driveway"
           className={styles.backgroundImage}
         />

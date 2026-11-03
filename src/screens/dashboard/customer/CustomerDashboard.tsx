@@ -42,8 +42,8 @@ import { useBusinessSettings, useServices } from '../../../hooks/useOperations';
 
 // Photo for the top card: the night garage shot in dark mode, the daylight shot in light mode
 const HERO_IMAGES = {
-  dark: { src: '/images/dashboard_hero.png', position: 'object-[92%_50%]' },
-  light: { src: '/images/dashboard_hero_light.png', position: 'object-right' },
+  dark: { src: '/images/dashboard_hero.webp', position: 'object-[92%_50%]' },
+  light: { src: '/images/dashboard_hero_light.webp', position: 'object-right' },
 } as const;
 
 // Package cards come from the admin's catalogue (Services & Business); top three by order

@@ -22,6 +22,7 @@ import {
 } from '../../../lib/appointments';
 import type { AdminAppointment } from '../../../lib/appointmentSlots';
 import { workTypeForService } from '../../../lib/scheduling';
+import { STRICT_JOB_TIMING } from '../../../lib/staffJobs';
 import JobStatusControl from '../../../components/staff/JobStatusControl';
 
 interface StaffAppointmentItem {
@@ -479,7 +480,7 @@ export default function StaffAppointments() {
                         <span className="text-[#35B86B] font-medium flex items-center gap-1.5">
                           <Check className="w-3.5 h-3.5" /> Wash service completed
                         </span>
-                      ) : isAppointmentPast(appt.date, appt.time, appt.status === 'Missed') ? (
+                      ) : STRICT_JOB_TIMING && isAppointmentPast(appt.date, appt.time, appt.status === 'Missed') ? (
                         <span className="text-red-400 font-medium flex items-center gap-1.5">
                           <AlertCircle className="w-3.5 h-3.5" /> Missed booking
                         </span>
@@ -490,7 +491,7 @@ export default function StaffAppointments() {
 
                     <div className="flex items-center gap-2.5">
                       {isHistoricalAppointment(appt) ||
-                      isAppointmentPast(appt.date, appt.time, appt.status === 'Missed') ? (
+                      (STRICT_JOB_TIMING && isAppointmentPast(appt.date, appt.time, appt.status === 'Missed')) ? (
                         <span className="text-xs text-[#71717A] italic py-1 px-2">
                           {isCancelled
                             ? 'Protected history'
@@ -503,7 +504,7 @@ export default function StaffAppointments() {
                           appt={appt.raw}
                           type={workTypeForService(appt.raw.serviceType)}
                           byName={appt.staffName}
-                          canStart={isToday}
+                          canStart={!STRICT_JOB_TIMING || isToday}
                           notStartedHint="You can start on the day"
                           compact
                         />
