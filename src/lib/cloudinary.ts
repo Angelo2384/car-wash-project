@@ -7,8 +7,8 @@ import { db } from './firebase';
  * UNSIGNED upload preset. Only the cloud name and preset name live in the app;
  * the Cloudinary API secret must never be added here (VITE_ vars ship to the browser).
  */
-const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+const CLOUD_NAME = import.meta.env?.VITE_CLOUDINARY_CLOUD_NAME;
+const UPLOAD_PRESET = import.meta.env?.VITE_CLOUDINARY_UPLOAD_PRESET;
 
 export const MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];

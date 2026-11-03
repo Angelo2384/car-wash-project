@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -15,7 +15,8 @@ import {
   Ticket,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
-import { auth } from "../../../lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../../../lib/firebase";
 import { avatarUrl } from "../../../lib/cloudinary";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
@@ -142,9 +143,40 @@ const PAGE_HEADINGS: PageHeadingDef[] = [
 export default function StaffDashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, loading } = useAuth();
   const { theme } = useTheme();
   const { unreadCount } = useNotifications();
+
+  const [redirectTo, setRedirectTo] = useState<string | null>(null);
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+
+  const uid = currentUser?.uid;
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let cancelled = false;
+
+    getDoc(doc(db, "users", currentUser.uid))
+      .then((snap) => {
+        if (cancelled) return;
+        const role = snap.exists() ? snap.data().role || "customer" : "customer";
+        if (role === "staff" || role === "admin") {
+          setIsAuthorized(true);
+        } else {
+          setRedirectTo(`/dashboard/${role}`);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIsAuthorized(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
 
   // Mobile sidebar state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -180,9 +212,11 @@ export default function StaffDashboardLayout() {
   }, [bellOpen]);
 
   // Close mobile sidebar on route change
-  useEffect(() => {
+  const [prevPath, setPrevPath] = useState(location.pathname);
+  if (prevPath !== location.pathname) {
+    setPrevPath(location.pathname);
     setMobileMenuOpen(false);
-  }, [location.pathname]);
+  }
 
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -206,7 +240,6 @@ export default function StaffDashboardLayout() {
     }
   };
 
-  const uid = currentUser?.uid;
   const displayName =
     currentUser?.displayName ||
     (uid ? localStorage.getItem(`ww_profile_name_${uid}`) : null) ||
@@ -248,6 +281,22 @@ export default function StaffDashboardLayout() {
   ];
 
   const isProfileActive = location.pathname === "/dashboard/staff/profile";
+
+  if (!loading && !currentUser) {
+    return <Navigate to="/auth/login" replace />;
+  }
+
+  if (redirectTo) {
+    return <Navigate to={redirectTo} replace />;
+  }
+
+  if (loading || isAuthorized === null) {
+    return (
+      <div className="min-h-screen bg-[#101010] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#E86A33] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (isDeactivated) {
     return (

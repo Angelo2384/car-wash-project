@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../lib/firebase';
 import {
   Star,
   MessageSquare,
@@ -14,18 +16,25 @@ import {
   ChevronDown,
   Award,
   ArrowRight,
+  CheckCircle2,
+  Info,
 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { useNotifications } from '../../../contexts/NotificationsContext';
 import { Button } from '../../../components/ui/Button';
-import { getStoredAppointments, type StoredAppointment } from '../../../lib/appointments';
+import {
+  getStoredAppointments,
+  getAppointmentsStorageKey,
+  type StoredAppointment,
+} from '../../../lib/appointments';
 import {
   getStoredReviews,
   saveCustomerReview,
   deleteCustomerReview,
   calculateReviewStats,
   subscribeToCustomerReviews,
+  backfillStaffAttribution,
   type CustomerReview,
   type ReviewStats,
 } from '../../../lib/reviews';
@@ -50,12 +59,18 @@ export default function CustomerReviews() {
 
   // Realtime reviews state
   const [reviews, setReviews] = useState<CustomerReview[]>(() => getStoredReviews(uid));
-  const [appointments, setAppointments] = useState<StoredAppointment[]>([]);
+  const [appointments, setAppointments] = useState<StoredAppointment[]>(() => getStoredAppointments(uid));
   const [stats, setStats] = useState<ReviewStats>(() => calculateReviewStats(getStoredReviews(uid)));
 
   // Form State
-  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string>('');
-  const [customServiceName, setCustomServiceName] = useState<string>('Express Wash');
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string>(() => {
+    const cached = getStoredAppointments(uid);
+    return cached[0]?.id || '';
+  });
+  const [customServiceName, setCustomServiceName] = useState<string>(() => {
+    const cached = getStoredAppointments(uid);
+    return cached[0]?.packageName || 'Express Wash';
+  });
   const [rating, setRating] = useState<number>(5);
   const [hoverRating, setHoverRating] = useState<number>(0);
   const [comment, setComment] = useState<string>('');
@@ -87,22 +102,48 @@ export default function CustomerReviews() {
 
   // Load appointments and subscribe to reviews
   useEffect(() => {
-    const appts = getStoredAppointments(uid);
-    setAppointments(appts);
+    if (!uid) return;
 
-    // Default to first appointment if available
-    if (appts.length > 0) {
-      setSelectedAppointmentId(appts[0].id);
-      setCustomServiceName(appts[0].packageName || 'Express Wash');
-    }
+    // Real-time Firestore sync for customer's appointments
+    const apptsRef = collection(db, 'users', uid, 'appointments');
+    const unsubAppts = onSnapshot(
+      apptsRef,
+      (snapshot) => {
+        const list: StoredAppointment[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ ...docSnap.data(), id: docSnap.id } as StoredAppointment);
+        });
+        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setAppointments(list);
 
-    const unsubscribe = subscribeToCustomerReviews(uid, (updatedReviews) => {
+        try {
+          localStorage.setItem(getAppointmentsStorageKey(uid), JSON.stringify(list));
+        } catch (err) {
+          console.warn('Could not cache appointments:', err);
+        }
+      },
+      (err) => {
+        console.warn('Failed to listen to appointments in CustomerReviews:', err);
+      }
+    );
+
+    const unsubscribeReviews = subscribeToCustomerReviews(uid, (updatedReviews) => {
       setReviews(updatedReviews);
       setStats(calculateReviewStats(updatedReviews));
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubAppts();
+      unsubscribeReviews();
+    };
   }, [uid]);
+
+  // Backfill staff attribution for older reviews belonging to verified completed bookings
+  useEffect(() => {
+    if (uid && reviews.length > 0 && appointments.length > 0) {
+      backfillStaffAttribution(reviews, appointments, uid);
+    }
+  }, [uid, reviews, appointments]);
 
   // Handle appointment selection
   const handleAppointmentSelect = (apptId: string) => {
@@ -112,10 +153,24 @@ export default function CustomerReviews() {
     if (apptId.startsWith('std_')) {
       const sName = apptId.replace('std_', '');
       setCustomServiceName(sName);
+      setComment('');
+      setPhotos([]);
+      setRating(5);
     } else {
       const found = appointments.find((a) => a.id === apptId);
       if (found) {
         setCustomServiceName(found.packageName);
+      }
+      // If customer already has a review for this booking, prefill form for convenient editing
+      const existing = reviews.find((r) => r.appointmentId === apptId);
+      if (existing) {
+        setRating(existing.rating);
+        setComment(existing.comment);
+        setPhotos(existing.photos ? [...existing.photos] : []);
+      } else {
+        setComment('');
+        setPhotos([]);
+        setRating(5);
       }
     }
   };
@@ -200,8 +255,15 @@ export default function CustomerReviews() {
     setIsSubmitting(true);
 
     const appt = appointments.find((a) => a.id === selectedAppointmentId);
+    const isCompleted = Boolean(appt && (appt.completed === true || appt.status === 'Completed'));
+    const assignedStaffUid = (appt && isCompleted) ? appt.assignedStaffUid : undefined;
+    const staffName = (appt && isCompleted) ? appt.staffName : undefined;
+
+    const existingForBooking = appt ? reviews.find((r) => r.appointmentId === appt.id) : undefined;
+    const reviewId = existingForBooking ? existingForBooking.id : `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
     const newReview: CustomerReview = {
-      id: `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: reviewId,
       customerId: uid || 'guest',
       customerName: currentUser?.displayName || 'Valued Customer',
       serviceName: appt?.packageName || customServiceName,
@@ -215,38 +277,45 @@ export default function CustomerReviews() {
           }
         : {}),
       appointmentDate: appt ? `${appt.date} • ${appt.time}` : undefined,
+      assignedStaffUid,
+      staffName,
       rating,
       comment: comment.trim(),
       photos,
       status: 'Published',
-      createdAt: Date.now(),
+      createdAt: existingForBooking?.createdAt || Date.now(),
+      updatedAt: Date.now(),
     };
 
     try {
       const res = await saveCustomerReview(newReview, uid);
       if (res.success) {
-        addNotification({
-          category: 'reviews',
-          icon: 'star',
-          title: 'Review Submitted',
-          message: `Thank you for reviewing your recent ${newReview.serviceName}. Your feedback helps us improve WashWizzy.`,
-          link: '/dashboard/customer/reviews',
-          eventId: `review-created-${newReview.id}`,
-        });
-
-        if (res.pointsAwarded && res.pointsAwarded > 0) {
+        if (!existingForBooking) {
           addNotification({
-            category: 'rewards',
+            category: 'reviews',
             icon: 'star',
-            title: 'Reward Points Added',
-            message: `You've earned ${res.pointsAwarded} reward points for submitting your review.`,
-            link: '/dashboard/customer/rewards',
-            eventId: `review-pts-${newReview.id}`,
+            title: 'Review Submitted',
+            message: `Thank you for reviewing your recent ${newReview.serviceName}. Your feedback helps us improve WashWizzy.`,
+            link: '/dashboard/customer/reviews',
+            eventId: `review-created-${newReview.id}`,
           });
+
+          if (res.pointsAwarded && res.pointsAwarded > 0) {
+            addNotification({
+              category: 'rewards',
+              icon: 'star',
+              title: 'Reward Points Added',
+              message: `You've earned ${res.pointsAwarded} reward points for submitting your review.`,
+              link: '/dashboard/customer/rewards',
+              eventId: `review-pts-${newReview.id}`,
+            });
+          }
         }
 
         showToast(
-          res.pointsAwarded
+          existingForBooking
+            ? 'Review updated successfully!'
+            : res.pointsAwarded
             ? `Review submitted successfully! +${res.pointsAwarded} loyalty points earned.`
             : 'Review submitted successfully!',
           'success'
@@ -257,7 +326,7 @@ export default function CustomerReviews() {
         setRating(5);
         setFormErrors({});
       } else {
-        showToast('Failed to save review. Please try again.', 'error');
+        showToast(res.error || 'Failed to save review. Please try again.', 'error');
       }
     } catch {
       showToast('Something went wrong. Please try again.', 'error');
@@ -477,11 +546,15 @@ export default function CustomerReviews() {
                   {appointments.length > 0 ? (
                     <>
                       <optgroup label="Your Booked Appointments">
-                        {appointments.map((appt) => (
-                          <option key={appt.id} value={appt.id}>
-                            {appt.packageName} • {appt.vehicle} ({appt.date})
-                          </option>
-                        ))}
+                        {appointments.map((appt) => {
+                          const isCompleted = appt.completed === true || appt.status === 'Completed';
+                          const suffix = isCompleted ? ' [Completed]' : '';
+                          return (
+                            <option key={appt.id} value={appt.id}>
+                              {appt.packageName} • {appt.vehicle} ({appt.date}){suffix}
+                            </option>
+                          );
+                        })}
                       </optgroup>
                       <optgroup label="General Services">
                         {STANDARD_SERVICES.map((svc) => (
@@ -504,6 +577,40 @@ export default function CustomerReviews() {
               {formErrors.service && (
                 <span className="text-xs text-red-400 mt-0.5">{formErrors.service}</span>
               )}
+
+              {/* Service completed by staff badge */}
+              {(() => {
+                const curAppt = appointments.find((a) => a.id === selectedAppointmentId);
+                const isCompleted = curAppt && (curAppt.completed === true || curAppt.status === 'Completed');
+                if (curAppt && isCompleted && (curAppt.staffName || curAppt.assignedStaffUid)) {
+                  return (
+                    <div className="flex items-center gap-2 px-3 py-2 mt-1 rounded-xl bg-[#E86A33]/10 border border-[#E86A33]/25 text-xs text-[#F5F5F5]">
+                      <CheckCircle2 className="w-4 h-4 text-[#E86A33] shrink-0" />
+                      <span>
+                        Service completed by <strong className="text-[#E86A33]">{curAppt.staffName || 'Staff Member'}</strong>
+                      </span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Notice if booking was already reviewed */}
+              {(() => {
+                const curAppt = appointments.find((a) => a.id === selectedAppointmentId);
+                if (curAppt) {
+                  const existingRev = reviews.find((r) => r.appointmentId === curAppt.id);
+                  if (existingRev) {
+                    return (
+                      <div className="flex items-center gap-2 px-3 py-2 mt-1 rounded-xl bg-sky-500/10 border border-sky-500/25 text-xs text-sky-300">
+                        <Info className="w-4 h-4 text-sky-400 shrink-0" />
+                        <span>You’ve already reviewed this wash booking. Submitting will update your existing review.</span>
+                      </div>
+                    );
+                  }
+                }
+                return null;
+              })()}
             </div>
 
             {/* Interactive 5-Star Rating */}
@@ -644,7 +751,9 @@ export default function CustomerReviews() {
               className="py-3.5 text-sm font-semibold mt-2"
             >
               <MessageSquare className="w-4 h-4" />
-              Submit Review
+              {reviews.find((r) => r.appointmentId === selectedAppointmentId)
+                ? 'Update Review'
+                : 'Submit Review'}
             </Button>
           </form>
         </div>
