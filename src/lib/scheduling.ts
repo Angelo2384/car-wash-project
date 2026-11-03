@@ -54,8 +54,17 @@ export function occupiedHours(slot: Pick<BookedSlot, 'startHour' | 'workHours' |
   return Array.from({ length: total }, (_, i) => slot.startHour + i);
 }
 
-function workHoursOf(slot: Pick<BookedSlot, 'startHour' | 'workHours'>): number[] {
+export function workHoursOf(slot: Pick<BookedSlot, 'startHour' | 'workHours'>): number[] {
   return Array.from({ length: slot.workHours }, (_, i) => slot.startHour + i);
+}
+
+/**
+ * Hours a unit can't be working because of lunch. Lunch is a real break, so mobile staff
+ * only get on the road when it ends: the hour after lunch is spent driving to the next job.
+ * The bay needs no travel, so bay staff can start straight after lunch.
+ */
+export function lunchBlockedHours(lunchHour: number, type: WorkType): number[] {
+  return type === 'mobile' ? [lunchHour, lunchHour + 1] : [lunchHour];
 }
 
 export function buildUnits(input: {
@@ -109,9 +118,9 @@ export function buildUnits(input: {
   return units.sort((a, b) => a.workType.localeCompare(b.workType) || a.label.localeCompare(b.label));
 }
 
-/** Units of a type that are working (not on lunch) at an hour. */
+/** Units of a type that can be working at an hour (not on lunch, or driving out after it). */
 export function hourCapacity(units: Unit[], type: WorkType, hour: number): number {
-  return units.filter((u) => u.workType === type && u.lunchHour !== hour).length;
+  return units.filter((u) => u.workType === type && !lunchBlockedHours(u.lunchHour, u.workType).includes(hour)).length;
 }
 
 /** Bookings of a type that occupy an hour (work or buffer). */
@@ -134,9 +143,15 @@ export function canStartAt(input: {
 }): boolean {
   const { units, slots, type, startHour, workHours, closeHour, excludeId } = input;
   if (startHour + workHours > closeHour) return false;
+  const workEnd = startHour + workHours;
   return occupiedHours({ startHour, workHours, type })
     .filter((h) => h < closeHour)
-    .every((h) => hourUsage(slots, type, h, excludeId) < hourCapacity(units, type, h));
+    .every((h) => {
+      // The travel hour after a call-out may fall on lunch: the crew eats where they are and
+      // drives on after lunch (that drive is the blocked hour after lunch). Only the work must avoid it
+      const capacity = h < workEnd ? hourCapacity(units, type, h) : units.filter((u) => u.workType === type).length;
+      return hourUsage(slots, type, h, excludeId) < capacity;
+    });
 }
 
 /** Units that could take a booking: right type, not on lunch during the work, and not already busy. */
@@ -149,7 +164,8 @@ export function freeUnitsFor(input: {
   const needs = occupiedHours(booking);
   return units.filter((unit) => {
     if (unit.workType !== booking.type) return false;
-    if (workHoursOf(booking).includes(unit.lunchHour)) return false;
+    const blocked = lunchBlockedHours(unit.lunchHour, unit.workType);
+    if (workHoursOf(booking).some((h) => blocked.includes(h))) return false;
     return !slots.some(
       (s) => s.id !== booking.id && s.unitId === unit.id && occupiedHours(s).some((h) => needs.includes(h))
     );

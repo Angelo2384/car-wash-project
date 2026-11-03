@@ -1,7 +1,7 @@
 import { deleteField, doc, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { markAppointmentCompleted, type StoredAppointment } from './appointments';
-import { occupiedHours, type BookedSlot } from './scheduling';
+import { lunchBlockedHours, workHoursOf, type BookedSlot } from './scheduling';
 import type { WorkType } from './staffOps';
 
 /**
@@ -111,9 +111,10 @@ export async function undoJobStep(appt: { id: string; customerUid: string }, bef
 }
 
 /**
- * The job that stops lunch moving to `hour`: a job (or its call-out travel hour)
- * already in that hour. Without a date it checks every upcoming day that has no
- * one-day lunch change, since it's the usual lunch that's moving.
+ * The job that stops lunch moving to `hour`: a job being worked during that lunch,
+ * or (for mobile staff) during the hour after it, which is spent driving out again.
+ * Without a date it checks every upcoming day that has no one-day lunch change,
+ * since it's the usual lunch that's moving.
  */
 export function lunchClash(input: {
   hour: number;
@@ -125,6 +126,7 @@ export function lunchClash(input: {
   const { hour, date, today, jobs, overriddenDates = [] } = input;
   return jobs.find((job) => {
     if (date ? job.date !== date : job.date < today || overriddenDates.includes(job.date)) return false;
-    return occupiedHours(job).includes(hour);
+    const blocked = lunchBlockedHours(hour, job.type);
+    return workHoursOf(job).some((h) => blocked.includes(h));
   });
 }
