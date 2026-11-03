@@ -14,6 +14,19 @@ import {
   type CustomerVehicle,
 } from '../../../lib/vehicles';
 import { useToast } from '../../../contexts/ToastContext';
+import { useNotifications } from '../../../contexts/NotificationsContext';
+import { payAndBook, VAT_RATE } from '../../../lib/bookingPayment';
+import { paystackTestMode } from '../../../lib/paystack';
+import {
+  calculateBookingPoints,
+  getRewardsSummary,
+  getValidVouchers,
+  getVoucherDiscount,
+  LOYALTY_TIERS,
+  type RedeemedReward,
+} from '../../../lib/rewards';
+import PaymentSuccessModal, { type PaymentSuccessInfo } from '../../../components/ui/PaymentSuccessModal';
+import EditProfileModal from '../../../components/customer/EditProfileModal';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import {
@@ -30,6 +43,8 @@ import {
   CreditCard,
   MapPin,
   Wand2,
+  Award,
+  Lock,
 } from 'lucide-react';
 
 const PKG_ICON: Record<string, React.ReactNode> = {
@@ -38,7 +53,6 @@ const PKG_ICON: Record<string, React.ReactNode> = {
   elite:   <ShieldCheck className="w-4 h-4" />,
 };
 
-const VAT = 0.15;
 function fmt(n: number) { return `R${n.toFixed(2)}`; }
 
 // ─── Input shortcut classes (dark theme matching Profile) ─────────────────────
@@ -65,7 +79,9 @@ export default function CustomerBooking() {
   const location  = useLocation();
   const { showToast } = useToast();
   const { currentUser } = useAuth();
+  const { addNotification } = useNotifications();
   const uid = currentUser?.uid;
+  const [profile, setProfile] = useState<{ fullName?: string; phoneNumber?: string }>({});
 
   const [hasMembership, setHasMembership] = useState<boolean>(() => {
     if (!uid) return false;
@@ -79,6 +95,10 @@ export default function CustomerBooking() {
       if (snap.exists()) {
         const mem = snap.data()?.hasMembership === true;
         setHasMembership(mem);
+        setProfile({
+          fullName: snap.data()?.fullName || snap.data()?.displayName,
+          phoneNumber: snap.data()?.phoneNumber || snap.data()?.phone,
+        });
         localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(mem));
       }
     });
@@ -95,8 +115,8 @@ export default function CustomerBooking() {
   const workHours = workHoursFor(pkg.durationMinutes);
 
   const [serviceType, setServiceType] = useState<'Call-out' | 'Drive-in'>('Call-out');
-  const [streetAddress, setStreetAddress] = useState('123 Bree Street');
-  const [city, setCity] = useState('Cape Town');
+  const [streetAddress, setStreetAddress] = useState('');
+  const [city, setCity] = useState('');
 
   const [date,    setDate]    = useState('');
   const [startHour, setStartHour] = useState<number | null>(null);
@@ -138,45 +158,129 @@ export default function CustomerBooking() {
     }
   };
 
+  // A redeemed voucher that suits this package is applied automatically
+  // Vouchers come from rewards bought with points on the Rewards page
+  const vouchers = getValidVouchers(uid).map((v) => ({ voucher: v, result: getVoucherDiscount(v, pkg.name, pkg.price) }));
+  // undefined = pick the best one automatically, null = the customer chose not to use one
+  const [chosenVoucherId, setChosenVoucherId] = useState<string | null | undefined>(undefined);
+  const [voucherCode, setVoucherCode] = useState('');
+  const bestVoucher = vouchers
+    .filter((v) => v.result.applies)
+    .sort((a, b) => b.result.discountAmount - a.result.discountAmount)[0]?.voucher ?? null;
+  const voucher: RedeemedReward | null =
+    chosenVoucherId === undefined ? bestVoucher : vouchers.find((v) => v.voucher.id === chosenVoucherId)?.voucher ?? null;
+  const voucherResult = voucher ? getVoucherDiscount(voucher, pkg.name, pkg.price) : null;
+  const pointsBalance = getRewardsSummary(uid).pointsBalance;
+
+  const applyVoucherCode = () => {
+    const code = voucherCode.trim().toUpperCase();
+    if (!code) return;
+    const match = vouchers.find((v) => v.voucher.voucherCode.toUpperCase() === code);
+    if (!match) {
+      showToast('No unused voucher with that code on your account.', 'error');
+      return;
+    }
+    if (!match.result.applies) {
+      showToast(match.result.reason || 'That voucher can’t be used with this package.', 'error');
+      return;
+    }
+    setChosenVoucherId(match.voucher.id);
+    setVoucherCode('');
+    showToast(`${match.voucher.rewardTitle} applied.`, 'success');
+  };
+  const discount = voucherResult?.applies ? voucherResult.discountAmount : 0;
+
   const callOutFee = calculateCallOutFee(serviceType, hasMembership, business.callOutFee);
-  const subtotal = pkg.price + callOutFee;
-  const vat   = subtotal * VAT;
+  const subtotal = Math.max(0, pkg.price - discount) + callOutFee;
+  const vat   = subtotal * VAT_RATE;
   const total = subtotal + vat;
 
-  const handleProceedToPayment = () => {
+  const customOptionCount = customServiceIds.length || navState.customOptionCount || 0;
+  const tier = LOYALTY_TIERS[getRewardsSummary(uid).currentTier] || LOYALTY_TIERS.Unranked;
+  const pointsEarned = calculateBookingPoints(pkg.name, customOptionCount, hasMembership, tier.multiplier);
+
+  const [paying, setPaying] = useState(false);
+  const [success, setSuccess] = useState<PaymentSuccessInfo | null>(null);
+  // Staff need a number to reach the customer; Google sign-ups don't have one yet
+  const accountPhone = profile.phoneNumber || currentUser?.phoneNumber || '';
+  const [phonePrompt, setPhonePrompt] = useState<{ continueToPay: boolean } | null>(null);
+
+  // Opens Paystack straight away; the booking is saved once the payment goes through
+  const handleProceedToPayment = async (saved?: { name: string; phone: string }) => {
     if (!date) {
       showToast('Please select an appointment date to continue', 'error');
       return;
     }
-    if (!time) {
+    if (startHour === null) {
       showToast('Please select an appointment time slot to continue', 'error');
       return;
     }
-    if (serviceType === 'Call-out' && !streetAddress.trim()) {
-      showToast('Please provide an address for the call-out service', 'error');
+    if (serviceType === 'Call-out' && (!streetAddress.trim() || !city.trim())) {
+      showToast('Please add the street address and suburb for the call-out', 'error');
+      return;
+    }
+    if (!vehicle.trim()) {
+      showToast('Please add your vehicle so the team knows which car to wash', 'error');
+      return;
+    }
+    if (!uid || !currentUser?.email) {
+      showToast('Please sign in again to book.', 'error');
+      return;
+    }
+    const phone = saved?.phone || accountPhone;
+    if (!phone) {
+      setPhonePrompt({ continueToPay: true });
       return;
     }
 
-    navigate('/dashboard/customer/checkout', {
-      state: {
-        packageId,
-        price: pkg.price,
-        packageName: pkg.name,
-        durationMinutes: pkg.durationMinutes,
-        workHours,
-        startHour,
-        customServices: customServiceIds,
-        serviceType,
-        streetAddress: serviceType === 'Call-out' ? streetAddress : '',
-        city: serviceType === 'Call-out' ? city : '',
-        date,
-        time,
-        plate,
-        vehicle,
-        notes,
-        customOptionCount: customServiceIds.length || navState.customOptionCount || 0,
-      },
-    });
+    setPaying(true);
+    try {
+      const result = await payAndBook(
+        {
+          customer: {
+            uid,
+            name: saved?.name || profile.fullName || currentUser.displayName || 'Customer',
+            email: currentUser.email,
+            phone,
+          },
+          pkg,
+          serviceType,
+          date,
+          startHour,
+          workHours,
+          time,
+          address: serviceType === 'Call-out' ? `${streetAddress.trim()}, ${city.trim()}` : '',
+          vehicle: `${vehicle.trim()}${plate.trim() ? ` (${plate.trim()})` : ''}`,
+          notes: notes.trim(),
+          total,
+          breakdown: { packagePrice: pkg.price, callOutFee, discount, vat },
+          customOptionCount,
+          pointsEarned,
+          voucher: voucherResult?.applies ? voucher : null,
+        },
+        addNotification
+      );
+      if (result.kind === 'slot_taken') {
+        showToast('Sorry, that time was just taken. Pick another time; nothing was charged.', 'error');
+        setStartHour(null);
+      } else if (result.kind === 'cancelled') {
+        showToast('Payment cancelled. Nothing was charged.', 'error');
+      } else {
+        showToast(`Payment of ${fmt(total)} confirmed! +${pointsEarned} reward points added.`, 'success');
+        setSuccess({
+          itemName: pkg.name,
+          amount: fmt(total),
+          paymentType: 'appointment',
+          appointmentDate: result.appointment.date,
+          appointmentTime: result.appointment.time,
+          reference: result.appointment.id,
+        });
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Could not complete the payment. Please try again.', 'error');
+    } finally {
+      setPaying(false);
+    }
   };
 
   const displayDate = date
@@ -406,17 +510,114 @@ export default function CustomerBooking() {
               />
             </div>
           </SectionCard>
+          {/* Rewards: vouchers bought with points */}
+          <SectionCard title="Rewards">
+            <div className="flex items-center justify-between gap-3 -mt-1">
+              <span className="text-sm text-[#A1A1AA]">
+                You have <span className="font-semibold text-[#F5F5F5]">{pointsBalance} points</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard/customer/rewards')}
+                className="text-xs text-[#E86A33] hover:underline cursor-pointer"
+              >
+                Get more rewards
+              </button>
+            </div>
+
+            {vouchers.length === 0 ? (
+              <p className="text-xs text-[#71717A] leading-relaxed">
+                No vouchers yet. Spend your points on a reward on the Rewards page and it shows up here to use on a booking.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {vouchers.map(({ voucher: v, result }) => {
+                  const applied = voucher?.id === v.id;
+                  return (
+                    <div
+                      key={v.id}
+                      className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
+                        applied ? 'border-[#35B86B]/50 bg-[#35B86B]/[0.06]' : 'border-[#2C2C2C] bg-[#101010]'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[#F5F5F5] truncate">{v.rewardTitle}</p>
+                        <p className="text-[11px] text-[#71717A]">
+                          <span className="font-mono">{v.voucherCode}</span>
+                          {result.applies ? ` · saves ${fmt(result.discountAmount)}` : ` · ${result.reason || 'Not valid for this package'}`}
+                        </p>
+                      </div>
+                      {applied ? (
+                        <button
+                          type="button"
+                          onClick={() => setChosenVoucherId(null)}
+                          className="text-xs font-semibold text-[#A1A1AA] hover:text-red-400 cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={!result.applies}
+                          onClick={() => setChosenVoucherId(v.id)}
+                          className="text-xs font-semibold text-[#E86A33] hover:underline cursor-pointer disabled:text-[#3C3C3C] disabled:no-underline disabled:cursor-not-allowed"
+                        >
+                          Apply
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                <p className="text-[11px] text-[#71717A]">One voucher per booking. A voucher you don't use stays on your account.</p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                value={voucherCode}
+                onChange={(e) => setVoucherCode(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && applyVoucherCode()}
+                placeholder="Have a voucher code?"
+                className="flex-1 min-w-0 bg-[#101010] border border-[#2C2C2C] rounded-lg px-3 h-10 text-sm text-[#F5F5F5] placeholder:text-[#71717A] focus:outline-none focus:border-[#E86A33] font-mono uppercase"
+                aria-label="Voucher code"
+              />
+              <Button variant="outline" type="button" onClick={applyVoucherCode} className="!py-0 h-10 px-4 text-xs !border-[#2C2C2C]">
+                Apply code
+              </Button>
+            </div>
+          </SectionCard>
         </div>
 
         {/* ────────── RIGHT: summary ───────────────────────────── */}
-        <div className="w-full lg:w-[320px] shrink-0">
+        <div className="w-full lg:w-[320px] shrink-0 flex flex-col gap-4">
+          {!accountPhone && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex flex-col gap-2.5">
+              <p className="text-sm font-semibold text-[#F5F5F5]">Your account is missing a phone number</p>
+              <p className="text-xs text-[#A1A1AA] leading-relaxed">Our team uses it to reach you about your wash, for example if they're running late.</p>
+              <button
+                type="button"
+                onClick={() => setPhonePrompt({ continueToPay: false })}
+                className="self-start text-xs font-semibold text-[#E86A33] hover:underline cursor-pointer"
+              >
+                Add phone number
+              </button>
+            </div>
+          )}
           <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 flex flex-col gap-5 sticky top-24 shadow-lg relative overflow-hidden">
             {/* Top accent */}
             <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
 
-            <h3 className="text-[15px] font-semibold font-display text-[#F5F5F5] tracking-tight border-b border-[#2C2C2C] pb-3">
-              Booking Summary
-            </h3>
+            <div className="flex items-center justify-between border-b border-[#2C2C2C] pb-3">
+              <h3 className="text-[15px] font-semibold font-display text-[#F5F5F5] tracking-tight">
+                Booking Summary
+              </h3>
+              {pointsEarned > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30">
+                  <Award className="w-3 h-3" />
+                  +{pointsEarned} pts
+                </span>
+              )}
+            </div>
 
             {/* Package block */}
             <div className="flex flex-col gap-1.5">
@@ -452,6 +653,12 @@ export default function CustomerBooking() {
             {/* Price breakdown */}
             <div className="flex flex-col gap-2.5">
               <SummaryRow label="Package Price" value={fmt(pkg.price)} />
+              {discount > 0 && voucher && (
+                <div className="flex items-center justify-between text-sm text-[#35B86B]">
+                  <span className="truncate pr-2">{voucher.rewardTitle}</span>
+                  <span className="font-semibold">-{fmt(discount)}</span>
+                </div>
+              )}
               {callOutFee > 0 && <SummaryRow label="Call-out Fee" value={fmt(callOutFee)} />}
               <SummaryRow label="Subtotal" value={fmt(subtotal)} />
               <SummaryRow label="VAT (15%)" value={fmt(vat)} />
@@ -475,10 +682,18 @@ export default function CustomerBooking() {
             </div>
 
             {/* CTA */}
-            <Button variant="primary" fullWidth className="gap-2" onClick={handleProceedToPayment}>
+            <Button variant="primary" fullWidth className="gap-2" onClick={() => handleProceedToPayment()} isLoading={paying} disabled={paying}>
               <CreditCard className="w-4 h-4" />
               Proceed to Payment
             </Button>
+
+            <p className="flex items-start justify-center gap-1.5 text-[11px] text-center text-[#71717A] leading-relaxed">
+              <Lock className="w-3 h-3 mt-0.5 shrink-0" />
+              <span>
+                Paystack opens to take your payment; we never see your card details.
+                {paystackTestMode && ' Test mode: no real money moves.'}
+              </span>
+            </p>
 
             <p className="text-[11px] text-center text-[#71717A] leading-relaxed">
               By proceeding you agree to our{' '}
@@ -491,6 +706,28 @@ export default function CustomerBooking() {
         </div>
 
       </div>
+
+      {phonePrompt && (
+        <EditProfileModal
+          initialName={profile.fullName || currentUser?.displayName || ''}
+          initialPhone=""
+          requirePhone
+          subtitle="Add a phone number so our team can reach you about your wash"
+          saveLabel={phonePrompt.continueToPay ? 'Save & continue to payment' : 'Save Details'}
+          onClose={() => setPhonePrompt(null)}
+          onSaved={(details) => {
+            setProfile((p) => ({ ...p, fullName: details.name, phoneNumber: details.phone }));
+            if (phonePrompt.continueToPay) handleProceedToPayment(details);
+          }}
+        />
+      )}
+
+      <PaymentSuccessModal
+        open={success !== null}
+        paymentInfo={success}
+        onDone={() => navigate('/dashboard/customer/appointments')}
+        doneText="View My Appointments"
+      />
     </div>
   );
 }

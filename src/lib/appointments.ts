@@ -75,6 +75,10 @@ export interface StoredAppointment {
   previousAssignedStaffUids?: string[];
   /** The services in a custom package */
   customServiceNames?: string[];
+  /** How the booking was paid, e.g. "PayFast (sandbox)" */
+  paymentProvider?: string;
+  paymentReference?: string;
+  paidAt?: number;
 }
 
 export const CALL_OUT_FEE = 150;

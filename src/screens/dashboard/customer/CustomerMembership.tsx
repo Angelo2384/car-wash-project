@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { formatRand } from "../../../lib/business";
 import { useBusinessSettings } from "../../../hooks/useOperations";
 import { useNavigate } from "react-router-dom";
@@ -11,11 +11,7 @@ import {
   ShieldCheck,
   ArrowRight,
   Check,
-  CreditCard,
   Lock,
-  Mail,
-  User,
-  Calendar,
   X,
 } from "lucide-react";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
@@ -25,7 +21,7 @@ import { useToast } from "../../../contexts/ToastContext";
 import { useNotifications } from "../../../contexts/NotificationsContext";
 import PaymentSuccessModal, { type PaymentSuccessInfo } from '../../../components/ui/PaymentSuccessModal';
 import { Button } from "../../../components/ui/Button";
-import { Input } from "../../../components/ui/Input";
+import { payWithPaystack, paystackTestMode } from "../../../lib/paystack";
 
 export default function CustomerMembership() {
   // Prices come from the admin's Fees settings
@@ -50,17 +46,11 @@ export default function CustomerMembership() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Checkout Pop-up Modal State
+  // Checkout Pop-up Modal State (Paystack takes the card details in its own window)
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [email, setEmail] = useState("");
-  const [cardHolder, setCardHolder] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
   const [isPaying, setIsPaying] = useState(false);
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const [paymentSuccessInfo, setPaymentSuccessInfo] = useState<PaymentSuccessInfo | null>(null);
-  const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     if (!uid) return;
@@ -80,139 +70,79 @@ export default function CustomerMembership() {
     return () => unsub();
   }, [uid]);
 
-  // Open checkout modal with prefilled data
-  const handleOpenCheckout = () => {
-    setEmail(currentUser?.email || "qaasim@gmail.com");
-    setCardHolder(currentUser?.displayName || "Qaasim Isaacs");
-    setCardNumber("");
-    setCardExpiry("");
-    setCardCvv("");
-    setFormErrors({});
-    setIsCheckoutOpen(true);
-  };
+  const handleOpenCheckout = () => setIsCheckoutOpen(true);
 
-  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
-    const formatted = raw.match(/.{1,4}/g)?.join(' ') || raw;
-    setCardNumber(formatted);
-    if (formErrors.cardNumber) {
-      setFormErrors((prev) => ({ ...prev, cardNumber: "" }));
-    }
-  };
-
-  const handleExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let raw = e.target.value.replace(/\D/g, '').slice(0, 4);
-    if (raw.length >= 3) {
-      raw = `${raw.slice(0, 2)}/${raw.slice(2)}`;
-    }
-    setCardExpiry(raw);
-    if (formErrors.cardExpiry) {
-      setFormErrors((prev) => ({ ...prev, cardExpiry: "" }));
-    }
-  };
-
-  const handleCvvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, '').slice(0, 4);
-    setCardCvv(raw);
-    if (formErrors.cardCvv) {
-      setFormErrors((prev) => ({ ...prev, cardCvv: "" }));
-    }
-  };
-
-  // Submit payment & activate membership
-  const handleProcessPayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const errors: { [key: string]: string } = {};
-
-    if (!email.trim()) errors.email = "Email is required";
-    if (!cardHolder.trim()) errors.cardHolder = "Cardholder name is required";
-    if (!cardNumber.trim() || cardNumber.replace(/\s/g, '').length < 16) {
-      errors.cardNumber = "Valid 16-digit card number required";
-    }
-    if (!cardExpiry.trim() || cardExpiry.length < 5) {
-      errors.cardExpiry = "Expiry date required (MM/YY)";
-    }
-    if (!cardCvv.trim() || cardCvv.length < 3) {
-      errors.cardCvv = "Valid 3 or 4-digit CVV required";
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setFormErrors(errors);
-      return;
-    }
-
+  // Pay with Paystack, then activate the membership
+  const handleProcessPayment = async () => {
+    if (!uid) return;
+    const fee = billingCycle === "monthly" ? business.membershipMonthly : business.membershipAnnual;
+    const feeStr = billingCycle === "monthly" ? monthlyFmt : annualFmt;
+    const refCode = `WW-MEM-${Math.floor(100000 + Math.random() * 900000)}`;
+    const [firstName, ...otherNames] = (currentUser?.displayName || "").split(" ");
     setIsPaying(true);
-
-    setTimeout(async () => {
-      try {
-        if (uid) {
-          await setDoc(
-            doc(db, "users", uid),
-            { hasMembership: true },
-            { merge: true }
-          );
-          localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(true));
-        }
-        setHasMembership(true);
-        window.dispatchEvent(new Event("ww_membership_changed"));
-        setIsPaying(false);
-        setIsCheckoutOpen(false);
-
-        const feeStr = billingCycle === "monthly" ? monthlyFmt : annualFmt;
-        const refCode = `WW-${Math.floor(100000 + Math.random() * 900000)}`;
-        
-        addNotification({
-          category: 'membership',
-          icon: 'crown',
-          title: 'Membership Activated',
-          message: `Welcome to VIP Membership! You now have unlimited free mobile call-outs and 20% discount on detailing.`,
-          link: '/dashboard/customer/membership',
-          eventId: `mem-activated-${Date.now()}`,
-        });
-
-        addNotification({
-          category: 'system',
-          icon: 'check',
-          title: 'Payment Successful',
-          message: `Your payment of ${feeStr} for Diamond Elite Membership was processed successfully.`,
-          link: '/dashboard/customer/profile',
-          eventId: `mem-pay-${Date.now()}`,
-        });
-
-        showToast(
-          `Payment of ${feeStr} confirmed! Diamond Elite Membership is now active.`,
-          "success"
-        );
-
-        // Show payment success modal with dynamic info
-        setPaymentSuccessInfo({
-          itemName: 'Diamond Elite Membership',
-          amount: feeStr,
-          paymentType: 'membership',
-          reference: refCode,
-        });
-        setShowPaymentSuccess(true);
-      } catch (error) {
-        console.error("Failed to update membership in Firestore:", error);
-        setHasMembership(true);
-        if (uid) {
-          localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(true));
-        }
-        window.dispatchEvent(new Event("ww_membership_changed"));
-        setIsPaying(false);
-        setIsCheckoutOpen(false);
-        showToast("Diamond Elite Membership activated successfully!", "success");
-
-        const fallbackFee = billingCycle === "monthly" ? monthlyFmt : annualFmt;
-        setPaymentSuccessInfo({
-          itemName: 'Diamond Elite Membership',
-          amount: fallbackFee,
-          paymentType: 'membership',
-          reference: `WW-${Math.floor(100000 + Math.random() * 900000)}`,
-        });
-        setShowPaymentSuccess(true);
+    try {
+      const payment = await payWithPaystack({
+        email: currentUser?.email || "",
+        amount: fee,
+        reference: refCode,
+        firstName: firstName || undefined,
+        lastName: otherNames.join(" ") || undefined,
+        description: `Diamond Elite Membership (${billingCycle === "monthly" ? "monthly" : "yearly"})`,
+      });
+      if (!payment) {
+        showToast("Payment cancelled. Nothing was charged.", "error");
+        return;
       }
-    }, 1000);
+
+      await setDoc(
+        doc(db, "users", uid),
+        {
+          hasMembership: true,
+          membership: {
+            cycle: billingCycle,
+            amount: fee,
+            paymentProvider: paystackTestMode ? "Paystack (test)" : "Paystack",
+            paymentReference: payment.reference,
+            paidAt: Date.now(),
+          },
+        },
+        { merge: true }
+      );
+      localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(true));
+      setHasMembership(true);
+      window.dispatchEvent(new Event("ww_membership_changed"));
+      setIsCheckoutOpen(false);
+
+      addNotification({
+        category: 'membership',
+        icon: 'crown',
+        title: 'Membership Activated',
+        message: `Welcome to VIP Membership! You now have unlimited free mobile call-outs and 20% discount on detailing.`,
+        link: '/dashboard/customer/membership',
+        eventId: `mem-activated-${payment.reference}`,
+      });
+      addNotification({
+        category: 'system',
+        icon: 'check',
+        title: 'Payment Successful',
+        message: `Your Paystack payment of ${feeStr} for Diamond Elite Membership was received.`,
+        link: '/dashboard/customer/membership',
+        eventId: `mem-pay-${payment.reference}`,
+      });
+      showToast(`Payment of ${feeStr} confirmed! Diamond Elite Membership is now active.`, "success");
+      setPaymentSuccessInfo({
+        itemName: 'Diamond Elite Membership',
+        amount: feeStr,
+        paymentType: 'membership',
+        reference: payment.reference,
+      });
+      setShowPaymentSuccess(true);
+    } catch (error) {
+      console.error("Membership payment failed:", error);
+      showToast(error instanceof Error ? error.message : "Couldn't complete the payment.", "error");
+    } finally {
+      setIsPaying(false);
+    }
   };
 
   const handleCancelMembership = async () => {
@@ -637,76 +567,16 @@ export default function CustomerMembership() {
               </span>
             </div>
 
-            {/* Checkout Form */}
-            <form onSubmit={handleProcessPayment} className="flex flex-col gap-4">
-              {/* Email Address */}
-              <Input
-                label="Email Address *"
-                type="email"
-                placeholder="your.email@example.com"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (formErrors.email) setFormErrors((prev) => ({ ...prev, email: "" }));
-                }}
-                error={formErrors.email}
-                icon={<Mail className="w-4 h-4" />}
-              />
-
-              {/* Cardholder Name */}
-              <Input
-                label="Cardholder Name *"
-                placeholder="e.g. Qaasim Isaacs"
-                value={cardHolder}
-                onChange={(e) => {
-                  setCardHolder(e.target.value);
-                  if (formErrors.cardHolder) setFormErrors((prev) => ({ ...prev, cardHolder: "" }));
-                }}
-                error={formErrors.cardHolder}
-                icon={<User className="w-4 h-4" />}
-              />
-
-              {/* Card Number */}
-              <Input
-                label="Card Number *"
-                placeholder="4000 1234 5678 9010"
-                value={cardNumber}
-                onChange={handleCardNumberChange}
-                error={formErrors.cardNumber}
-                maxLength={19}
-                icon={<CreditCard className="w-4 h-4" />}
-              />
-
-              {/* Expiry and CVV Row */}
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Expiry Date (MM/YY) *"
-                  placeholder="12/28"
-                  value={cardExpiry}
-                  onChange={handleExpiryChange}
-                  error={formErrors.cardExpiry}
-                  maxLength={5}
-                  icon={<Calendar className="w-4 h-4" />}
-                />
-                <Input
-                  label="CVV / CVC *"
-                  type="password"
-                  placeholder="123"
-                  value={cardCvv}
-                  onChange={handleCvvChange}
-                  error={formErrors.cardCvv}
-                  maxLength={4}
-                  icon={<Lock className="w-4 h-4" />}
-                />
+            {/* Paystack takes the card details in its own window */}
+            <div className="flex flex-col gap-4">
+              <div className="flex items-start gap-3 text-xs text-[#A1A1AA] leading-relaxed">
+                <Lock className="w-4 h-4 text-[#35B86B] shrink-0 mt-0.5" />
+                <span>
+                  Paystack opens a secure window to take your payment. WashWizzy never sees your card details.
+                  {paystackTestMode && " Test mode: no real money moves; use a test card from Paystack's window."}
+                </span>
               </div>
 
-              {/* Security note */}
-              <div className="flex items-center gap-2 text-[11px] text-[#71717A] pt-1">
-                <Lock className="w-3.5 h-3.5 text-[#35B86B] shrink-0" />
-                <span>256-bit encrypted checkout. No real charge will be made.</span>
-              </div>
-
-              {/* Submit Pay Now Button */}
               <div className="flex items-center gap-3 pt-2">
                 <Button
                   type="button"
@@ -718,17 +588,18 @@ export default function CustomerMembership() {
                   Cancel
                 </Button>
                 <Button
-                  type="submit"
+                  type="button"
                   variant="primary"
+                  onClick={handleProcessPayment}
                   isLoading={isPaying}
                   disabled={isPaying}
                   className="flex-[2] py-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-2"
                 >
                   <Lock className="w-4 h-4" />
-                  Pay Now ({priceFormatted})
+                  Pay {priceFormatted} with Paystack
                 </Button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

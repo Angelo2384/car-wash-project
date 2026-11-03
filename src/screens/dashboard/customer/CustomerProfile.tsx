@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  User,
   Mail,
   Phone,
   ShieldCheck,
@@ -21,16 +20,13 @@ import {
   ChevronRight,
   MessageSquare,
   Star,
-  Lock,
   Receipt,
   RotateCcw,
 } from "lucide-react";
-import { updateProfile } from "firebase/auth";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../../../lib/firebase";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
-import { useNotifications } from "../../../contexts/NotificationsContext";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import UserAvatar from "../../../components/ui/UserAvatar";
@@ -58,13 +54,8 @@ import {
   subscribeToCustomerVehicles,
   type CustomerVehicle,
 } from "../../../lib/vehicles";
-import {
-  getStoredPaymentMethods,
-  savePaymentMethod,
-  deletePaymentMethod,
-  subscribeToPaymentMethods,
-  type SavedPaymentMethod,
-} from "../../../lib/payments";
+import { purgeSavedPaymentMethods } from "../../../lib/payments";
+import EditProfileModal from "../../../components/customer/EditProfileModal";
 import {
   avatarUrl,
   saveProfilePhotoUrl,
@@ -83,7 +74,6 @@ export default function CustomerProfile() {
   const navigate = useNavigate();
   const { currentUser, refreshUser } = useAuth();
   const { showToast } = useToast();
-  const { addNotification } = useNotifications();
   const uid = currentUser?.uid;
 
   // ─── Real Profile Data (Auth + Scoped LocalStorage) ──────────────────────
@@ -123,11 +113,11 @@ export default function CustomerProfile() {
           setHasMembership(mem);
           localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(mem));
 
-          if (data?.displayName && !localStorage.getItem(`ww_profile_name_${uid}`)) {
-            setProfileName(data.displayName);
+          if ((data?.fullName || data?.displayName) && !localStorage.getItem(`ww_profile_name_${uid}`)) {
+            setProfileName(data.fullName || data.displayName);
           }
-          if (data?.phone && !localStorage.getItem(`ww_profile_phone_${uid}`)) {
-            setProfilePhone(data.phone);
+          if ((data?.phone || data?.phoneNumber) && !localStorage.getItem(`ww_profile_phone_${uid}`)) {
+            setProfilePhone(data.phone || data.phoneNumber);
           }
           if (data?.photoURL) {
             setProfileAvatar(data.photoURL);
@@ -200,24 +190,14 @@ export default function CustomerProfile() {
     };
   }, [uid]);
 
-  // ─── Real Payment Methods State ───────────────────────────────────────────
-  const [paymentMethods, setPaymentMethods] = useState<SavedPaymentMethod[]>(() =>
-    getStoredPaymentMethods(uid)
-  );
-
+  // Paystack handles payments, so any card details saved by older versions are removed
   useEffect(() => {
-    const unsub = subscribeToPaymentMethods(uid, (list) => {
-      setPaymentMethods(list);
-    });
-    return () => unsub();
+    purgeSavedPaymentMethods(uid);
   }, [uid]);
 
   // ─── Modals State ─────────────────────────────────────────────────────────
   // Edit Profile Modal
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const [editName, setEditName] = useState(profileName);
-  const [editPhone, setEditPhone] = useState(profilePhone);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Add / Edit Vehicle Modal
@@ -235,18 +215,7 @@ export default function CustomerProfile() {
   const [deletingVehicle, setDeletingVehicle] = useState<CustomerVehicle | null>(null);
   const [isDeletingVehicle, setIsDeletingVehicle] = useState(false);
 
-  // Add Payment Method Modal
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [cardHolder, setCardHolder] = useState(profileName);
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
-  const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
-  const [isSavingPayment, setIsSavingPayment] = useState(false);
 
-  // Delete Payment Method Confirmation
-  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
-  const [isDeletingPayment, setIsDeletingPayment] = useState(false);
 
   // Receipt Modal
   const [viewingReceipt, setViewingReceipt] = useState<StoredAppointment | null>(null);
@@ -274,59 +243,6 @@ export default function CustomerProfile() {
       showToast(err instanceof Error ? err.message : "Couldn't update your photo. Try again.", "error");
     } finally {
       setIsUploadingAvatar(false);
-    }
-  };
-
-  // ─── Save Profile Details Handler ─────────────────────────────────────────
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editName.trim()) {
-      showToast("Name cannot be empty.", "error");
-      return;
-    }
-
-    setIsSavingProfile(true);
-    try {
-      const trimmedName = editName.trim();
-      const trimmedPhone = editPhone.trim();
-
-      setProfileName(trimmedName);
-      setProfilePhone(trimmedPhone);
-
-      if (uid) {
-        localStorage.setItem(`ww_profile_name_${uid}`, trimmedName);
-        localStorage.setItem(`ww_profile_phone_${uid}`, trimmedPhone);
-
-        // Update Firebase Auth displayName
-        if (auth.currentUser) {
-          await updateProfile(auth.currentUser, { displayName: trimmedName });
-        }
-
-        // Update Firestore User Doc
-        await setDoc(
-          doc(db, "users", uid),
-          { displayName: trimmedName, phone: trimmedPhone },
-          { merge: true }
-        );
-      }
-
-      addNotification({
-        category: 'system',
-        icon: 'check',
-        title: 'Account Updated',
-        message: 'Your account information was successfully updated.',
-        link: '/dashboard/customer/profile',
-        eventId: `profile-update-${Date.now()}`,
-      });
-
-      window.dispatchEvent(new Event("storage"));
-      showToast("Profile details updated successfully!", "success");
-      setIsEditProfileOpen(false);
-    } catch (err) {
-      console.error("Failed to update profile:", err);
-      showToast("Could not update profile details.", "error");
-    } finally {
-      setIsSavingProfile(false);
     }
   };
 
@@ -416,107 +332,6 @@ export default function CustomerProfile() {
     }
   };
 
-  // ─── Payment Method Handlers ──────────────────────────────────────────────
-  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, "").slice(0, 16);
-    const formatted = raw.match(/.{1,4}/g)?.join(" ") || raw;
-    setCardNumber(formatted);
-    if (cardErrors.cardNumber) setCardErrors((prev) => ({ ...prev, cardNumber: "" }));
-  };
-
-  const handleCardExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let raw = e.target.value.replace(/\D/g, "").slice(0, 4);
-    if (raw.length >= 3) {
-      raw = `${raw.slice(0, 2)}/${raw.slice(2)}`;
-    }
-    setCardExpiry(raw);
-    if (cardErrors.cardExpiry) setCardErrors((prev) => ({ ...prev, cardExpiry: "" }));
-  };
-
-  const handleCardCvvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, "").slice(0, 4);
-    setCardCvv(raw);
-    if (cardErrors.cardCvv) setCardErrors((prev) => ({ ...prev, cardCvv: "" }));
-  };
-
-  const handleSavePaymentMethod = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const errors: Record<string, string> = {};
-
-    if (!cardHolder.trim()) errors.cardHolder = "Cardholder name is required";
-    const cleanDigits = cardNumber.replace(/\s/g, "");
-    if (!cleanDigits || cleanDigits.length < 15) {
-      errors.cardNumber = "Valid 16-digit card number required";
-    }
-    if (!cardExpiry || !/^\d{2}\/\d{2}$/.test(cardExpiry)) {
-      errors.cardExpiry = "Expiry must be MM/YY";
-    }
-    if (!cardCvv || cardCvv.length < 3) {
-      errors.cardCvv = "Valid CVV required";
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setCardErrors(errors);
-      return;
-    }
-
-    setIsSavingPayment(true);
-
-    // SECURITY: Detect card brand & store ONLY safe display information.
-    // Full card number and CVV are NEVER stored in Firestore or localStorage.
-    let brand: "visa" | "mastercard" | "amex" | "card" = "card";
-    if (cleanDigits.startsWith("4")) brand = "visa";
-    else if (/^5[1-5]/.test(cleanDigits)) brand = "mastercard";
-    else if (/^3[47]/.test(cleanDigits)) brand = "amex";
-
-    const last4 = cleanDigits.slice(-4);
-    const newMethod: SavedPaymentMethod = {
-      id: `pm-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      cardBrand: brand,
-      cardHolder: cardHolder.trim(),
-      last4,
-      expiry: cardExpiry,
-      isDefault: paymentMethods.length === 0,
-      createdAt: Date.now(),
-    };
-
-    try {
-      const ok = await savePaymentMethod(newMethod, uid);
-      if (ok) {
-        showToast("Payment method saved securely!", "success");
-        // Clear sensitive form states
-        setCardNumber("");
-        setCardCvv("");
-        setCardExpiry("");
-        setIsPaymentModalOpen(false);
-      } else {
-        showToast("Failed to save payment method.", "error");
-      }
-    } catch {
-      showToast("Something went wrong saving card.", "error");
-    } finally {
-      setIsSavingPayment(false);
-    }
-  };
-
-  const handleConfirmDeletePayment = async () => {
-    if (!deletingPaymentId) return;
-    setIsDeletingPayment(true);
-    try {
-      const ok = await deletePaymentMethod(deletingPaymentId, uid);
-      if (ok) {
-        showToast("Payment method removed.", "success");
-        setDeletingPaymentId(null);
-      } else {
-        showToast("Failed to remove payment method.", "error");
-      }
-    } catch {
-      showToast("Error removing payment method.", "error");
-    } finally {
-      setIsDeletingPayment(false);
-    }
-  };
-
   return (
     <div className="flex flex-col gap-8 pb-16 text-[#F5F5F5] animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-forwards">
       {/* ─── 2. SECTION 1: PROFILE OVERVIEW & LOYALTY REWARDS ─── */}
@@ -584,8 +399,6 @@ export default function CustomerProfile() {
               <Button
                 variant="outline"
                 onClick={() => {
-                  setEditName(profileName);
-                  setEditPhone(profilePhone);
                   setIsEditProfileOpen(true);
                 }}
                 className="text-xs py-2 px-4 !border-[#2C2C2C] hover:!border-[#E86A33] hover:!text-[#E86A33] self-start sm:self-auto"
@@ -1124,156 +937,34 @@ export default function CustomerProfile() {
         )}
       </div>
 
-      {/* ─── 5. SECTION 4: ACCOUNT & PAYMENT METHODS ─── */}
+      {/* ─── 5. SECTION 4: PAYMENTS ─── */}
       <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-7 shadow-lg">
-        <div className="flex items-center justify-between pb-4 border-b border-[#2C2C2C]">
-          <div className="flex items-center gap-2.5">
-            <CreditCard className="w-5 h-5 text-[#E86A33]" />
-            <h2 className="text-lg font-bold font-display text-[#F5F5F5]">
-              Saved Payment Methods
-            </h2>
-          </div>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setCardHolder(profileName);
-              setCardNumber("");
-              setCardExpiry("");
-              setCardCvv("");
-              setCardErrors({});
-              setIsPaymentModalOpen(true);
-            }}
-            className="text-xs py-2 px-3.5 !border-[#2C2C2C] hover:!border-[#E86A33]"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Payment Method
-          </Button>
+        <div className="flex items-center gap-2.5 pb-4 border-b border-[#2C2C2C]">
+          <CreditCard className="w-5 h-5 text-[#E86A33]" />
+          <h2 className="text-lg font-bold font-display text-[#F5F5F5]">Payments</h2>
         </div>
-
-        {paymentMethods.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-5">
-            {paymentMethods.map((pm) => (
-              <div
-                key={pm.id}
-                className="bg-[#101010] border border-[#2C2C2C] hover:border-[#E86A33]/40 rounded-xl p-4 flex flex-col justify-between shadow-sm transition-all"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-lg bg-[#1F1F1F] border border-[#2C2C2C] flex items-center justify-center text-[#E86A33]">
-                      <CreditCard className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-[#F5F5F5] uppercase tracking-wider">
-                        {pm.cardBrand} •••• {pm.last4}
-                      </span>
-                      <p className="text-[11px] text-[#71717A] mt-0.5">
-                        Expires {pm.expiry}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => setDeletingPaymentId(pm.id)}
-                    className="p-1.5 rounded-lg text-[#71717A] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                    title="Remove Card"
-                    aria-label="Remove Card"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div className="mt-3 pt-2 border-t border-[#1F1F1F] flex items-center justify-between text-[11px]">
-                  <span className="text-[#71717A] truncate max-w-[130px]">
-                    {pm.cardHolder}
-                  </span>
-                  {pm.isDefault && (
-                    <span className="text-[10px] font-bold uppercase text-[#35B86B] bg-[#35B86B]/15 px-1.5 py-0.5 rounded border border-[#35B86B]/30">
-                      Default
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="py-8 flex flex-col items-center justify-center text-center text-[#71717A] border border-dashed border-[#2C2C2C] rounded-xl mt-4">
-            <CreditCard className="w-8 h-8 text-[#71717A] mb-2 opacity-60" />
-            <p className="text-sm font-semibold text-[#F5F5F5]">
-              No payment method saved
-            </p>
-            <p className="text-xs text-[#71717A] mt-0.5">
-              Securely save your card for 1-click checkout on future washes.
-            </p>
-          </div>
-        )}
+        <div className="flex items-start gap-3 mt-5">
+          <ShieldCheck className="w-5 h-5 text-[#35B86B] shrink-0 mt-0.5" />
+          <p className="text-sm text-[#A1A1AA] leading-relaxed">
+            Payments are handled by <span className="text-[#F5F5F5] font-semibold">Paystack</span>. You pay in Paystack's secure
+            window each time you book, and WashWizzy never sees or stores your card details.
+          </p>
+        </div>
       </div>
 
       {/* ─── 6. MODALS ─── */}
 
       {/* Modal 1: Edit Profile */}
       {isEditProfileOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col gap-5 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
-
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
-                  Edit Profile Details
-                </h3>
-                <p className="text-xs text-[#A1A1AA]">
-                  Update your contact information
-                </p>
-              </div>
-              <button
-                onClick={() => setIsEditProfileOpen(false)}
-                className="text-[#71717A] hover:text-[#F5F5F5] p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors"
-                aria-label="Close modal"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveProfile} className="flex flex-col gap-4">
-              <Input
-                label="Full Name *"
-                placeholder="e.g. Alex Burns"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                icon={<User className="w-4 h-4" />}
-                required
-              />
-
-              <Input
-                label="Phone Number"
-                placeholder="e.g. +27 82 123 4567"
-                value={editPhone}
-                onChange={(e) => setEditPhone(e.target.value)}
-                icon={<Phone className="w-4 h-4" />}
-              />
-
-              <div className="flex items-center gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsEditProfileOpen(false)}
-                  disabled={isSavingProfile}
-                  className="flex-1 py-2.5 text-xs !border-[#2C2C2C]"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  isLoading={isSavingProfile}
-                  className="flex-1 py-2.5 text-xs font-semibold"
-                >
-                  Save Details
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <EditProfileModal
+          initialName={profileName}
+          initialPhone={profilePhone}
+          onClose={() => setIsEditProfileOpen(false)}
+          onSaved={({ name, phone }) => {
+            setProfileName(name);
+            setProfilePhone(phone);
+          }}
+        />
       )}
 
       {/* Modal 2: Add / Edit Vehicle */}
@@ -1429,147 +1120,6 @@ export default function CustomerProfile() {
                 className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isDeletingVehicle ? "Deleting..." : "Delete Vehicle"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 4: Add Payment Method */}
-      {isPaymentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col gap-5 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
-
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
-                  Add Payment Card
-                </h3>
-                <p className="text-xs text-[#A1A1AA]">
-                  Card details are encrypted & PCI-DSS compliant
-                </p>
-              </div>
-              <button
-                onClick={() => setIsPaymentModalOpen(false)}
-                className="text-[#71717A] hover:text-[#F5F5F5] p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors"
-                aria-label="Close modal"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSavePaymentMethod} className="flex flex-col gap-4">
-              <Input
-                label="Cardholder Name *"
-                placeholder="e.g. Alex Burns"
-                value={cardHolder}
-                onChange={(e) => {
-                  setCardHolder(e.target.value);
-                  if (cardErrors.cardHolder) setCardErrors((p) => ({ ...p, cardHolder: "" }));
-                }}
-                error={cardErrors.cardHolder}
-                icon={<User className="w-4 h-4" />}
-                required
-              />
-
-              <Input
-                label="Card Number *"
-                placeholder="4000 1234 5678 9010"
-                value={cardNumber}
-                onChange={handleCardNumberChange}
-                error={cardErrors.cardNumber}
-                maxLength={19}
-                icon={<CreditCard className="w-4 h-4" />}
-                required
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Expiry Date (MM/YY) *"
-                  placeholder="12/28"
-                  value={cardExpiry}
-                  onChange={handleCardExpiryChange}
-                  error={cardErrors.cardExpiry}
-                  maxLength={5}
-                  icon={<Calendar className="w-4 h-4" />}
-                  required
-                />
-                <Input
-                  label="CVV *"
-                  type="password"
-                  placeholder="123"
-                  value={cardCvv}
-                  onChange={handleCardCvvChange}
-                  error={cardErrors.cardCvv}
-                  maxLength={4}
-                  icon={<Lock className="w-4 h-4" />}
-                  required
-                />
-              </div>
-
-              <div className="flex items-center gap-2 text-[11px] text-[#71717A] pt-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#35B86B] shrink-0" />
-                <span>Only safe card brand and last 4 digits are saved.</span>
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsPaymentModalOpen(false)}
-                  disabled={isSavingPayment}
-                  className="flex-1 py-2.5 text-xs !border-[#2C2C2C]"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  isLoading={isSavingPayment}
-                  className="flex-1 py-2.5 text-xs font-semibold"
-                >
-                  Save Card
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 5: Delete Payment Method Confirmation */}
-      {deletingPaymentId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl max-w-md w-full p-6 shadow-2xl relative overflow-hidden text-center flex flex-col items-center">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-red-500" />
-            <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/25 flex items-center justify-center text-red-400 mb-3">
-              <Trash2 className="w-6 h-6" />
-            </div>
-
-            <h3 className="text-lg font-bold font-display text-[#F5F5F5]">
-              Remove Payment Card?
-            </h3>
-            <p className="text-xs text-[#A1A1AA] mt-1 mb-6 max-w-xs">
-              Are you sure you want to delete this saved card from your account?
-            </p>
-
-            <div className="flex items-center gap-3 w-full">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDeletingPaymentId(null)}
-                disabled={isDeletingPayment}
-                className="flex-1 py-2.5 text-xs !border-[#2C2C2C]"
-              >
-                Cancel
-              </Button>
-              <button
-                type="button"
-                onClick={handleConfirmDeletePayment}
-                disabled={isDeletingPayment}
-                className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {isDeletingPayment ? "Removing..." : "Remove Card"}
               </button>
             </div>
           </div>

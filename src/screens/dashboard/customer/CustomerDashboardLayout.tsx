@@ -17,10 +17,12 @@ import {
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
+import { updateProfile } from "firebase/auth";
 import { auth, db } from "../../../lib/firebase";
 import { avatarUrl } from "../../../lib/cloudinary";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useCustomerJobNotifications } from "../../../hooks/useCustomerJobNotifications";
+import { useWelcomeEmail } from "../../../hooks/useWelcomeEmail";
 import { useTheme } from "../../../contexts/ThemeContext";
 import ThemeToggle from "../../../components/ui/ThemeToggle";
 import ProfileChip from "../../../components/ui/ProfileChip";
@@ -166,9 +168,10 @@ const PAGE_HEADINGS: PageHeadingDef[] = [
 export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, refreshUser } = useAuth();
   const { unreadCount } = useNotifications();
   useCustomerJobNotifications(currentUser?.uid);
+  useWelcomeEmail(currentUser);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Bell dropdown state
@@ -222,6 +225,8 @@ export default function DashboardLayout() {
   });
 
   const [savedPhotoURL, setSavedPhotoURL] = useState<string | null>(null);
+  // The name customers sign up with lives on their account record (fullName)
+  const [savedName, setSavedName] = useState<string>("");
 
   useEffect(() => {
     if (!uid) return;
@@ -233,6 +238,14 @@ export default function DashboardLayout() {
           setHasMembership(mem);
           localStorage.setItem(`ww_has_membership_${uid}`, JSON.stringify(mem));
           setSavedPhotoURL(snap.data()?.photoURL || null);
+          const name = (snap.data()?.fullName || snap.data()?.displayName || "").trim();
+          setSavedName(name);
+          // Older sign-ups never set the login name; copy it over once so every page shows it
+          if (name && auth.currentUser && !auth.currentUser.displayName) {
+            updateProfile(auth.currentUser, { displayName: name })
+              .then(refreshUser)
+              .catch((e) => console.warn("Could not sync account name:", e));
+          }
         }
       },
       (err) => {
@@ -255,11 +268,14 @@ export default function DashboardLayout() {
       window.removeEventListener("ww_membership_changed", handleMembershipChange);
       window.removeEventListener("storage", handleMembershipChange);
     };
+    // refreshUser changes every render; resubscribing to the account for it isn't needed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
   const displayName =
+    savedName ||
     currentUser?.displayName ||
     (uid ? localStorage.getItem(`ww_profile_name_${uid}`) : null) ||
-    "Alex Burns";
+    "Customer";
   const pageHeading = findPageHeading(location.pathname, "/dashboard/customer", PAGE_HEADINGS);
   const photoURL =
     avatarUrl(savedPhotoURL || currentUser?.photoURL, 96);

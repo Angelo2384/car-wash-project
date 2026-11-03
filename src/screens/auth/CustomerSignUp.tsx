@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { auth, db } from '../../lib/firebase';
-import { createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendEmailVerification, deleteUser } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendEmailVerification, deleteUser, updateProfile } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { Mail, Lock, Eye, EyeOff, User, Phone, ArrowLeft } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
@@ -43,6 +43,8 @@ export default function CustomerSignUp() {
       }
 
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      // Save the name on the login account too, so the dashboard shows it straight away
+      await updateProfile(userCredential.user, { displayName: fullName.trim() }).catch(() => {});
       
       await setDoc(doc(db, "users", userCredential.user.uid), {
         uid: userCredential.user.uid,

@@ -158,7 +158,12 @@ service cloud.firestore {
       // The admin can read them for the customer detail page
       match /{subcollection}/{document=**} {
         allow read: if (isOwner(userId) || isAdmin()) && subcollection != 'appointments' && subcollection != 'notifications' && subcollection != 'reviews';
-        allow write: if isOwner(userId) && subcollection != 'appointments' && subcollection != 'notifications' && subcollection != 'reviews';
+        allow write: if isOwner(userId) && subcollection != 'appointments' && subcollection != 'notifications' && subcollection != 'reviews' && subcollection != 'paymentMethods';
+      }
+
+      // Card details are never stored: Paystack handles payments. Old saved cards can only be deleted.
+      match /paymentMethods/{methodId} {
+        allow read, delete: if isOwner(userId) || isAdmin();
       }
     }
 
