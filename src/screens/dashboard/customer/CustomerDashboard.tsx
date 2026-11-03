@@ -21,7 +21,6 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { db } from '../../../lib/firebase';
 import {
-  CALL_OUT_FEE,
   getStoredAppointments,
   getDynamicAppointmentStatus,
   getAppointmentsStorageKey,
@@ -31,12 +30,15 @@ import {
 } from '../../../lib/appointments';
 import {
   REWARD_POINTS,
+  calculateBookingPoints,
   getRewardsSummary,
   getTierProgress,
   subscribeToRewards,
   type RewardsSummary,
 } from '../../../lib/rewards';
 import { Button } from '../../../components/ui/Button';
+import { activePackages, formatDuration, formatRand, type ServiceItem } from '../../../lib/business';
+import { useBusinessSettings, useServices } from '../../../hooks/useOperations';
 
 // Photo for the top card: the night garage shot in dark mode, the daylight shot in light mode
 const HERO_IMAGES = {
@@ -44,48 +46,20 @@ const HERO_IMAGES = {
   light: { src: '/images/dashboard_hero_light.png', position: 'object-right' },
 } as const;
 
-const MEMBERSHIP_PRICE = 'R199';
-
-// ─── Package data (mirrors CustomerPackages) ──────────────────────────────────
-const PACKAGES = [
-  {
-    id: 'express',
-    name: 'Express Wash',
-    price: 'R75',
-    duration: '20–30 min',
-    points: REWARD_POINTS.BOOKING_EXPRESS,
-    highlighted: false,
-    services: ['Exterior hand wash', 'Wheel rinse', 'Window wipe-down', 'Quick interior vacuum'],
-  },
-  {
-    id: 'premium',
-    name: 'Premium Wash',
-    price: 'R275',
-    duration: '60–75 min',
-    points: REWARD_POINTS.BOOKING_PREMIUM,
-    highlighted: true,
-    services: [
-      'Full exterior hand wash & dry',
-      'Full interior vacuum & wipe-down',
-      'Dashboard & console detail',
-      'Tyre dressing & rim shine',
-    ],
-  },
-  {
-    id: 'elite',
-    name: 'Elite Wash',
-    price: 'R875',
-    duration: '2–3 hrs',
-    points: REWARD_POINTS.BOOKING_ELITE,
-    highlighted: false,
-    services: [
-      'Everything in Premium Wash',
-      'Machine polish & paint correction',
-      'Ceramic coating application',
-      'Full leather conditioning',
-    ],
-  },
-];
+// Package cards come from the admin's catalogue (Services & Business); top three by order
+function dashboardPackages(items: ServiceItem[]) {
+  return activePackages(items)
+    .slice(0, 3)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: formatRand(p.price),
+      duration: formatDuration(p.durationMinutes),
+      points: calculateBookingPoints(p.name),
+      highlighted: Boolean(p.popular),
+      services: p.includes.slice(0, 4),
+    }));
+}
 
 const HOW_IT_WORKS = [
   {
@@ -139,7 +113,7 @@ const STATUS_BADGES: Record<string, string> = {
   red: 'text-red-500 bg-red-500/10 border-red-500/30',
 };
 
-const UPCOMING_STATUSES = ['Awaiting Confirmation', 'Confirmed', 'Staff on route'];
+const UPCOMING_STATUSES = ['Awaiting Confirmation', 'Confirmed', 'Staff on route', 'Staff arrived', 'Washing in progress'];
 
 /**
  * Refunds aren't stored on bookings yet, so this reads the outcome from the
@@ -172,6 +146,14 @@ const STATUS_COPY: Record<string, { heading: string; body: string }> = {
   'Staff on route': {
     heading: 'Your detailer is on the way',
     body: 'Make sure your car is unlocked or the keys are handy when they arrive.',
+  },
+  'Staff arrived': {
+    heading: 'Your detailer has arrived',
+    body: "They're getting set up and will start on your car shortly.",
+  },
+  'Washing in progress': {
+    heading: 'Your car is being washed',
+    body: "Sit back. We'll let you know as soon as it's done.",
   },
   'Awaiting Confirmation': {
     heading: 'Booking received',
@@ -319,9 +301,9 @@ function BookingHero({ item, onView, onReschedule, onBookAgain, onReview }: { it
   );
 }
 
-function MembershipCard({ hasMembership }: { hasMembership: boolean }) {
+function MembershipCard({ hasMembership, price, callOutFee }: { hasMembership: boolean; price: number; callOutFee: number }) {
   const perks = [
-    { title: 'R0 call-out fees', detail: `Save R${CALL_OUT_FEE} every time we come to you` },
+    { title: 'R0 call-out fees', detail: `Save ${formatRand(callOutFee)} every time we come to you` },
     { title: 'Priority scheduling', detail: 'First pick of booking slots' },
   ];
 
@@ -340,7 +322,7 @@ function MembershipCard({ hasMembership }: { hasMembership: boolean }) {
             {hasMembership ? "You're a member" : 'Membership'}
           </h2>
           <p className="text-sm text-[#A1A1AA]">
-            {hasMembership ? 'Your perks apply automatically' : `${MEMBERSHIP_PRICE} / month`}
+            {hasMembership ? 'Your perks apply automatically' : `${formatRand(price)} / month`}
           </p>
         </div>
       </div>
@@ -582,8 +564,8 @@ function ComingUpCard({ items }: { items: ApptWithStatus[] }) {
   );
 }
 
-function SavingsCard({ callOutVisits, hasMembership }: { callOutVisits: number; hasMembership: boolean }) {
-  const amount = callOutVisits * CALL_OUT_FEE;
+function SavingsCard({ callOutVisits, hasMembership, fee }: { callOutVisits: number; hasMembership: boolean; fee: number }) {
+  const amount = callOutVisits * fee;
   return (
     <div className={`${cardClass} p-6 flex flex-col gap-3`}>
       <div className="flex items-center gap-2 text-sm font-semibold text-[#F5F5F5]">
@@ -594,7 +576,7 @@ function SavingsCard({ callOutVisits, hasMembership }: { callOutVisits: number; 
       <p className="text-sm text-[#A1A1AA]">
         {callOutVisits === 0
           ? 'You haven’t booked a call-out yet.'
-          : `${callOutVisits} call-out visit${callOutVisits === 1 ? '' : 's'} at R${CALL_OUT_FEE} each.`}
+          : `${callOutVisits} call-out visit${callOutVisits === 1 ? '' : 's'} at ${formatRand(fee)} each.`}
       </p>
       {!hasMembership && callOutVisits > 0 && (
         <Link
@@ -609,6 +591,8 @@ function SavingsCard({ callOutVisits, hasMembership }: { callOutVisits: number; 
 }
 
 function PackagesSection({ isNewCustomer, onBook }: { isNewCustomer: boolean; onBook: (id: string) => void }) {
+  const { items } = useServices();
+  const packages = dashboardPackages(items);
   return (
     <section className="flex flex-col gap-4">
       <SectionHeading
@@ -616,7 +600,7 @@ function PackagesSection({ isNewCustomer, onBook }: { isNewCustomer: boolean; on
         subtitle={isNewCustomer ? 'A good place to start for your first booking' : 'Pick a package to book your next wash'}
       />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {PACKAGES.map((pkg) => (
+        {packages.map((pkg) => (
           <div
             key={pkg.id}
             className={`relative rounded-2xl p-6 flex flex-col gap-5 bg-[#171717] ${
@@ -664,6 +648,7 @@ export default function CustomerDashboard() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const uid = currentUser?.uid;
+  const business = useBusinessSettings();
 
   const [appointments, setAppointments] = useState<StoredAppointment[]>(() => getStoredAppointments(uid));
   const [hasMembership, setHasMembership] = useState<boolean>(() => {
@@ -773,7 +758,7 @@ export default function CustomerDashboard() {
             onReview={() => navigate('/dashboard/customer/reviews')}
           />
         )}
-        <MembershipCard hasMembership={hasMembership} />
+        <MembershipCard hasMembership={hasMembership} price={business.membershipMonthly} callOutFee={business.callOutFee} />
       </div>
 
       {isNewCustomer ? (
@@ -817,7 +802,7 @@ export default function CustomerDashboard() {
             </div>
             <div className="flex flex-col gap-5">
               <ComingUpCard items={upcoming.slice(1, 3)} />
-              <SavingsCard callOutVisits={callOutVisits} hasMembership={hasMembership} />
+              <SavingsCard callOutVisits={callOutVisits} hasMembership={hasMembership} fee={business.callOutFee} />
             </div>
           </div>
         </>

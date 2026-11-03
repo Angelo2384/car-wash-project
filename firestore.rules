@@ -2,7 +2,7 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // 1. Helper Function: Check if the user is authenticated
     function isAuthenticated() {
       return request.auth != null;
@@ -22,54 +22,78 @@ service cloud.firestore {
       );
     }
 
+    // Helper: signed-in staff member
+    function isStaff() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff';
+    }
+
+    // Helper: is the signed-in user one of the staff assigned to this job (crew or solo)
+    function isAssignedStaff(data) {
+      return isAuthenticated() && (
+        data.get('assignedStaffUid', null) == request.auth.uid ||
+        request.auth.uid in data.get('assignedStaffUids', [])
+      );
+    }
+
+    // Helper: the update only touches these fields
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
     // 4. Rules for user profiles and their subcollections
     match /users/{userId} {
       // Users can read their own profile; admins can read all profiles to view customer contact info
       allow read: if isOwner(userId) || isAdmin();
-      
+
       // Customers cannot set role to admin on signup; staff can activate their account
       allow create: if (isOwner(userId) && (!('role' in request.resource.data) || request.resource.data.role in ['customer', 'staff'])) || isAdmin();
-      
+
       // Users cannot elevate their own role to admin and cannot alter employeeId if it exists; admins can update profiles
       allow update: if (
         isOwner(userId) && 
         (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) &&
         (!('employeeId' in request.resource.data) || !('employeeId' in resource.data) || request.resource.data.employeeId == resource.data.employeeId)
       ) || isAdmin();
+
       allow delete: if isAdmin();
 
       // Specific rule for appointments:
-      // Customers cannot confirm their own bookings, cannot assign staff, and cannot alter terminal (cancelled/completed) bookings
-      // Assigned staff can only access jobs assigned to them
+      // Customers cannot confirm their own bookings or assign staff, and cannot alter terminal (cancelled/completed) bookings.
+      // A customer reschedule may only clear the assignment (the admin then assigns a crew again).
+      // Assigned staff (any member of the crew) can update the job.
       match /appointments/{appointmentId} {
-        allow read: if isOwner(userId) || isAdmin() || (isAuthenticated() && resource.data.assignedStaffUid == request.auth.uid);
-        
+        allow read: if isOwner(userId) || isAdmin() || isAssignedStaff(resource.data);
+
         // Creation must start unconfirmed with no staff assigned
-        allow create: if (isOwner(userId) && 
+        allow create: if (isOwner(userId) &&
                          (!('confirmed' in request.resource.data) || request.resource.data.confirmed == false) &&
                          (!('assignedStaffUid' in request.resource.data) || request.resource.data.assignedStaffUid == null) &&
                          (!('status' in request.resource.data) || request.resource.data.status == 'Awaiting Confirmation'))
                       || isAdmin();
-        
-        // Customer updates cannot self-confirm, cannot assign staff, and cannot overwrite cancelled/completed appointments
-        // Admin updates cannot modify cancelled or completed appointments
-        // Assigned staff can update job status (e.g. mark completed)
+
         allow update: if (
           isAdmin() &&
           resource.data.status != 'Cancelled' &&
           (!('completed' in resource.data) || resource.data.completed != true)
         ) || (
           isOwner(userId) &&
-          (!('confirmed' in request.resource.data) || request.resource.data.confirmed == resource.data.confirmed) &&
-          (!('assignedStaffUid' in request.resource.data) || request.resource.data.assignedStaffUid == resource.data.assignedStaffUid) &&
-          (!('staffName' in request.resource.data) || request.resource.data.staffName == resource.data.staffName) &&
+          (request.resource.data.get('confirmed', false) == resource.data.get('confirmed', false) ||
+            request.resource.data.get('confirmed', false) == false) &&
+          (request.resource.data.get('assignedStaffUid', null) == resource.data.get('assignedStaffUid', null) ||
+            request.resource.data.get('assignedStaffUid', null) == null) &&
+          (request.resource.data.get('assignedStaffUids', []) == resource.data.get('assignedStaffUids', []) ||
+            request.resource.data.get('assignedStaffUids', []).size() == 0) &&
+          (request.resource.data.get('unitId', null) == resource.data.get('unitId', null) ||
+            request.resource.data.get('unitId', null) == null) &&
           resource.data.status != 'Cancelled' &&
           (!('completed' in resource.data) || resource.data.completed != true)
         ) || (
-          isAuthenticated() && resource.data.assignedStaffUid == request.auth.uid &&
+          isAssignedStaff(resource.data) &&
           resource.data.status != 'Cancelled'
         );
-        
+
         allow delete: if isAdmin();
       }
 
@@ -84,8 +108,14 @@ service cloud.firestore {
       // Specific rule for reviews:
       // Customers can create reviews for their completed appointments or general service
       // Assigned staff can read published reviews assigned to them
+      // Admin can moderate reviews
       match /reviews/{reviewId} {
-        allow read: if isOwner(userId) || isAdmin() || (isAuthenticated() && resource.data.assignedStaffUid == request.auth.uid && resource.data.status == 'Published');
+        allow read: if isOwner(userId) || isAdmin() || (
+          isAuthenticated() && resource.data.status == 'Published' && (
+            resource.data.get('assignedStaffUid', null) == request.auth.uid ||
+            request.auth.uid in resource.data.get('staffUids', [])
+          )
+        );
 
         allow create: if (
           isOwner(userId) &&
@@ -117,53 +147,107 @@ service cloud.firestore {
           (!('appointmentId' in resource.data) || resource.data.appointmentId == null || ('appointmentId' in request.resource.data && request.resource.data.appointmentId == resource.data.appointmentId)) &&
           (!('assignedStaffUid' in resource.data) || resource.data.assignedStaffUid == null || ('assignedStaffUid' in request.resource.data && request.resource.data.assignedStaffUid == resource.data.assignedStaffUid)) &&
           (!('staffName' in resource.data) || resource.data.staffName == null || ('staffName' in request.resource.data && request.resource.data.staffName == resource.data.staffName))
-        ) || isAdmin();
+        ) || (
+          isAdmin() && onlyChanges(['status', 'hiddenByAdmin', 'ownerReply', 'ownerRepliedAt', 'updatedAt', 'staffUids', 'staffName', 'assignedStaffUid'])
+        );
 
         allow delete: if isOwner(userId) || isAdmin();
       }
 
-      // Other subcollections (e.g. vehicles, paymentMethods, redeemedRewards)
+      // Other subcollections (e.g. vehicles, rewards, paymentMethods, redeemedRewards)
+      // The admin can read them for the customer detail page
       match /{subcollection}/{document=**} {
-        allow read, write: if isOwner(userId) && subcollection != 'appointments' && subcollection != 'notifications' && subcollection != 'reviews';
+        allow read: if (isOwner(userId) || isAdmin()) && subcollection != 'appointments' && subcollection != 'notifications' && subcollection != 'reviews';
+        allow write: if isOwner(userId) && subcollection != 'appointments' && subcollection != 'notifications' && subcollection != 'reviews';
       }
     }
 
     // 5. Collection group rule for appointments (used by admin and staff dashboards)
     match /{path=**}/appointments/{appointmentId} {
-      allow read: if isAdmin() || 
-                     (isAuthenticated() && resource.data.assignedStaffUid == request.auth.uid) || 
+      allow read: if isAdmin() ||
+                     isAssignedStaff(resource.data) ||
                      (isAuthenticated() && resource.data.customerUid == request.auth.uid);
       allow write: if (isAdmin() && resource.data.status != 'Cancelled' && (!('completed' in resource.data) || resource.data.completed != true)) ||
-                      (isAuthenticated() && resource.data.assignedStaffUid == request.auth.uid && resource.data.status != 'Cancelled');
+                      (isAssignedStaff(resource.data) && resource.data.status != 'Cancelled');
     }
 
     // 6. Collection group rule for reviews (used by admin, customer, and staff dashboards)
     match /{path=**}/reviews/{reviewId} {
-      allow read: if isAdmin() || 
-                     (isAuthenticated() && resource.data.customerId == request.auth.uid) || 
-                     (isAuthenticated() && resource.data.assignedStaffUid == request.auth.uid && resource.data.status == 'Published');
-      allow write: if isAdmin() || 
+      allow read: if isAdmin() ||
+                     (isAuthenticated() && resource.data.customerId == request.auth.uid) ||
+                     (isAuthenticated() && resource.data.status == 'Published' &&
+                       (resource.data.get('assignedStaffUid', null) == request.auth.uid ||
+                        request.auth.uid in resource.data.get('staffUids', [])));
+      allow write: if isAdmin() ||
                       (isAuthenticated() && resource.data.customerId == request.auth.uid);
     }
 
-    // 7. Rule for staff registration 
+    // 7. Rule for staff registration (approved staff emails)
     match /pre_registered_staff/{document=**} {
       // Anyone can read this to verify their email during signup
       allow read: if true;
-      // Nobody can write from the client app directly for security
-      allow write: if false; 
+      // Only the admin adds or removes approved staff
+      allow write: if isAdmin();
     }
 
-    // 8. Rule for settings
+    // 8. Rule for settings (staff access code, opening days, fees)
     match /settings/{document=**} {
-      allow read: if true; // Allowed so staff can read access codes during signup
-      allow write: if false;
+      allow read: if true; // Allowed so staff can read access codes during signup and customers see opening hours
+      allow write: if isAdmin();
     }
 
-    // 9. Default fallback to lock down anything else not explicitly allowed above
+    // 9. Services & packages catalogue: public to read, admin to manage
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 10. Staff settings: work type and lunch. Staff may only change their own lunch.
+    match /staffSettings/{staffUid} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() ||
+        (isOwner(staffUid) && onlyChanges(['usualLunch', 'lunchOverrides', 'updatedAt']));
+    }
+
+    // 11. Crews: only the admin creates, edits or unpairs. Members may only agree on the crew lunch.
+    match /crews/{crewId} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() ||
+        (isAuthenticated() && request.auth.uid in resource.data.memberUids &&
+          onlyChanges(['lunchHour', 'lunchOverrides', 'lunchProposal', 'updatedAt']));
+    }
+
+    // 12. Day schedule (who is unavailable on a date): admin only
+    match /schedule/{date} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // 13. Booked slots: anonymous time blocks used to grey out taken times.
+    // Customers write only their own, and can never assign a crew.
+    match /bookedSlots/{appointmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() ||
+        (isAuthenticated() && request.resource.data.customerUid == request.auth.uid &&
+          request.resource.data.get('unitId', null) == null);
+      allow update: if isAdmin() ||
+        (isAuthenticated() && resource.data.customerUid == request.auth.uid &&
+          request.resource.data.customerUid == request.auth.uid &&
+          request.resource.data.get('unitId', null) == null);
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.customerUid == request.auth.uid);
+    }
+
+    // 14. Walk-in tickets: created and progressed by staff or the admin
+    match /walkIns/{ticketId} {
+      allow read, write: if isAdmin() || isStaff();
+    }
+
+    // 15. Default fallback to lock down anything else not explicitly allowed above
     match /{document=**} {
       allow read, write: if false;
     }
-    
+
   }
 }

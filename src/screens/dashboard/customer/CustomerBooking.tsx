@@ -4,6 +4,10 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../../../contexts/AuthContext';
 import { db } from '../../../lib/firebase';
 import { calculateCallOutFee } from '../../../lib/appointments';
+import { formatDuration, formatHour, resolveBookingPackage, toIsoDate, workHoursFor } from '../../../lib/business';
+import { workTypeForService } from '../../../lib/scheduling';
+import { useBusinessSettings, useServices } from '../../../hooks/useOperations';
+import TimeSlotPicker from '../../../components/booking/TimeSlotPicker';
 import {
   getStoredVehicles,
   subscribeToCustomerVehicles,
@@ -25,14 +29,8 @@ import {
   Check,
   CreditCard,
   MapPin,
+  Wand2,
 } from 'lucide-react';
-
-// ─── Package catalogue ────────────────────────────────────────────────────────
-const PACKAGES: Record<string, { name: string; price: number; duration: string; accentColor: string }> = {
-  express: { name: 'Express Wash',  price: 75,  duration: '20–30 min', accentColor: '#A1A1AA' },
-  premium: { name: 'Premium Wash', price: 275, duration: '60–75 min', accentColor: '#E86A33' },
-  elite:   { name: 'Elite Wash',   price: 875, duration: '2–3 hrs',   accentColor: '#35B86B' },
-};
 
 const PKG_ICON: Record<string, React.ReactNode> = {
   express: <Droplets className="w-4 h-4" />,
@@ -40,16 +38,8 @@ const PKG_ICON: Record<string, React.ReactNode> = {
   elite:   <ShieldCheck className="w-4 h-4" />,
 };
 
-const INCLUDED: Record<string, string[]> = {
-  express: ['Exterior hand wash', 'Wheel rinse', 'Window wipe-down', 'Quick interior vacuum'],
-  premium: ['Full exterior wash & dry', 'Interior vacuum & wipe-down', 'Tyre dressing & rim shine', 'Window clean (inside & out)', 'Air freshener finish'],
-  elite:   ['Everything in Premium', 'Clay bar & paint correction', 'Ceramic coating application', 'Full leather conditioning', 'Engine bay clean'],
-};
-
 const VAT = 0.15;
 function fmt(n: number) { return `R${n.toFixed(2)}`; }
-
-const TIME_SLOTS = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
 
 // ─── Input shortcut classes (dark theme matching Profile) ─────────────────────
 // The Input component defaults to dark; override nothing — it already matches.
@@ -95,15 +85,22 @@ export default function CustomerBooking() {
     return () => unsub();
   }, [uid]);
 
-  const packageId: string = (location.state as any)?.packageId ?? 'premium';
-  const pkg = PACKAGES[packageId] ?? PACKAGES.premium;
+  const navState = (location.state ?? {}) as { packageId?: string; customServices?: string[]; customOptionCount?: number };
+  const packageId: string = navState.packageId ?? 'premium';
+  const customServiceIds: string[] = navState.customServices ?? [];
+  // Prices, durations and the call-out fee come from the admin's Services & Business settings
+  const { items: services } = useServices();
+  const business = useBusinessSettings();
+  const pkg = resolveBookingPackage(services, packageId, customServiceIds);
+  const workHours = workHoursFor(pkg.durationMinutes);
 
   const [serviceType, setServiceType] = useState<'Call-out' | 'Drive-in'>('Call-out');
   const [streetAddress, setStreetAddress] = useState('123 Bree Street');
   const [city, setCity] = useState('Cape Town');
 
   const [date,    setDate]    = useState('');
-  const [time,    setTime]    = useState('');
+  const [startHour, setStartHour] = useState<number | null>(null);
+  const time = startHour === null ? '' : formatHour(startHour);
   const [plate,   setPlate]   = useState('');
   const [vehicle, setVehicle] = useState('');
   const [notes,   setNotes]   = useState('');
@@ -141,7 +138,7 @@ export default function CustomerBooking() {
     }
   };
 
-  const callOutFee = calculateCallOutFee(serviceType, hasMembership);
+  const callOutFee = calculateCallOutFee(serviceType, hasMembership, business.callOutFee);
   const subtotal = pkg.price + callOutFee;
   const vat   = subtotal * VAT;
   const total = subtotal + vat;
@@ -164,6 +161,11 @@ export default function CustomerBooking() {
       state: {
         packageId,
         price: pkg.price,
+        packageName: pkg.name,
+        durationMinutes: pkg.durationMinutes,
+        workHours,
+        startHour,
+        customServices: customServiceIds,
         serviceType,
         streetAddress: serviceType === 'Call-out' ? streetAddress : '',
         city: serviceType === 'Call-out' ? city : '',
@@ -172,10 +174,7 @@ export default function CustomerBooking() {
         plate,
         vehicle,
         notes,
-        customOptionCount:
-          (location.state as any)?.customServices?.length ||
-          (location.state as any)?.customOptionCount ||
-          0,
+        customOptionCount: customServiceIds.length || navState.customOptionCount || 0,
       },
     });
   };
@@ -214,11 +213,11 @@ export default function CustomerBooking() {
               className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
               style={{ background: `${pkg.accentColor}18`, color: pkg.accentColor }}
             >
-              {PKG_ICON[packageId]}
+              {PKG_ICON[pkg.id] ?? <Wand2 className="w-4 h-4" />}
             </span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-[#F5F5F5]">{pkg.name}</p>
-              <p className="text-xs text-[#71717A]">Duration: {pkg.duration}</p>
+              <p className="text-xs text-[#71717A]">Duration: {formatDuration(pkg.durationMinutes)}</p>
             </div>
             <span className="font-bold text-[#F5F5F5] text-sm">{fmt(pkg.price)}</span>
             <button
@@ -236,7 +235,11 @@ export default function CustomerBooking() {
                 type="date"
                 label="Select Date"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                min={toIsoDate(new Date())}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  setStartHour(null);
+                }}
                 icon={<Calendar className="w-5 h-5" />}
                 className={inputCls}
                 labelClassName={labelCls}
@@ -245,23 +248,13 @@ export default function CustomerBooking() {
               {/* Time slot picker */}
               <div className="flex flex-col gap-1.5 w-full">
                 <label className="text-sm font-medium text-soft-gray ml-1">Select Time</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {TIME_SLOTS.map((slot) => (
-                    <button
-                      key={slot}
-                      type="button"
-                      onClick={() => setTime(slot)}
-                      className={`flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-medium border transition-all duration-150
-                        ${time === slot
-                          ? 'bg-[#E86A33] border-[#E86A33] text-white shadow-md shadow-[#E86A33]/20'
-                          : 'bg-[#101010] border-[#2C2C2C] text-[#A1A1AA] hover:border-[#E86A33]/40 hover:text-[#F5F5F5]'
-                        }`}
-                    >
-                      <Clock className="w-3.5 h-3.5 opacity-70" />
-                      {slot}
-                    </button>
-                  ))}
-                </div>
+                <TimeSlotPicker
+                  date={date}
+                  type={workTypeForService(serviceType)}
+                  workHours={workHours}
+                  value={startHour}
+                  onChange={setStartHour}
+                />
               </div>
             </div>
           </SectionCard>
@@ -271,7 +264,7 @@ export default function CustomerBooking() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setServiceType('Call-out')}
+                onClick={() => { setServiceType('Call-out'); setStartHour(null); }}
                 className={`flex flex-col gap-1.5 p-4 rounded-xl border text-left transition-all ${
                   serviceType === 'Call-out'
                     ? 'bg-[#E86A33]/10 border-[#E86A33] text-[#F5F5F5]'
@@ -289,7 +282,7 @@ export default function CustomerBooking() {
 
               <button
                 type="button"
-                onClick={() => setServiceType('Drive-in')}
+                onClick={() => { setServiceType('Drive-in'); setStartHour(null); }}
                 className={`flex flex-col gap-1.5 p-4 rounded-xl border text-left transition-all ${
                   serviceType === 'Drive-in'
                     ? 'bg-[#E86A33]/10 border-[#E86A33] text-[#F5F5F5]'
@@ -352,7 +345,7 @@ export default function CustomerBooking() {
                           onClick={() => handleSelectSavedVehicle(v.id)}
                           className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
                             isSelected
-                              ? 'bg-[#E86A33]/15 border-[#E86A33] text-[#F5F5F5] shadow-sm shadow-[#E86A33]/10'
+                              ? 'bg-[#E86A33]/15 border-[#E86A33] text-[#F5F5F5]'
                               : 'bg-[#101010] border-[#2C2C2C] text-[#A1A1AA] hover:border-[#3C3C3C] hover:text-[#F5F5F5]'
                           }`}
                         >
@@ -434,7 +427,7 @@ export default function CustomerBooking() {
                     className="w-6 h-6 rounded-md flex items-center justify-center"
                     style={{ background: `${pkg.accentColor}18`, color: pkg.accentColor }}
                   >
-                    {PKG_ICON[packageId]}
+                    {PKG_ICON[pkg.id] ?? <Wand2 className="w-4 h-4" />}
                   </span>
                   <span className="font-semibold text-[#F5F5F5] text-sm">{pkg.name}</span>
                 </div>
@@ -442,7 +435,7 @@ export default function CustomerBooking() {
               </div>
               <div className="flex items-center gap-1.5 mt-1 text-xs text-[#71717A]">
                 <Clock className="w-3.5 h-3.5 text-[#E86A33]" />
-                Duration: {pkg.duration}
+                Duration: {formatDuration(pkg.durationMinutes)}
               </div>
             </div>
 
@@ -473,7 +466,7 @@ export default function CustomerBooking() {
               <p className="text-[11px] font-semibold uppercase tracking-widest text-[#71717A] mb-0.5">
                 Included
               </p>
-              {INCLUDED[packageId]?.map((item: string) => (
+              {pkg.includes.map((item: string) => (
                 <div key={item} className="flex items-center gap-2 text-xs text-[#D4D4D4]">
                   <Check className="w-3.5 h-3.5 text-[#E86A33] shrink-0" />
                   {item}

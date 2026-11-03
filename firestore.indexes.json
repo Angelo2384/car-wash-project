@@ -87,6 +87,16 @@
       ]
     },
     {
+      "collectionGroup": "appointments",
+      "fieldPath": "assignedStaffUids",
+      "indexes": [
+        {
+          "arrayConfig": "CONTAINS",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
       "collectionGroup": "reviews",
       "fieldPath": "assignedStaffUid",
       "indexes": [
@@ -102,6 +112,16 @@
       "indexes": [
         {
           "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "reviews",
+      "fieldPath": "staffUids",
+      "indexes": [
+        {
+          "arrayConfig": "CONTAINS",
           "queryScope": "COLLECTION_GROUP"
         }
       ]

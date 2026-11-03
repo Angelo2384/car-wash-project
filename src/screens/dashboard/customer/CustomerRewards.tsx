@@ -309,16 +309,7 @@ export default function CustomerRewards() {
       </div>
 
       {/* ── 2. Main Loyalty Summary Card ── */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-[#171717] via-[#141414] to-[#101010] border border-[#2C2C2C] rounded-3xl p-6 sm:p-8 shadow-2xl">
-        {/* Glow Accents */}
-        <div
-          className="absolute -top-24 -right-24 w-96 h-96 rounded-full pointer-events-none blur-3xl opacity-20"
-          style={{ background: currentTierObj.glowColor || 'rgba(232,106,51,0.2)' }}
-        ></div>
-        <div
-          className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full pointer-events-none blur-3xl opacity-15"
-          style={{ background: 'rgba(53,184,107,0.2)' }}
-        ></div>
+      <div className="relative overflow-hidden bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-8">
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
           {/* Points & Tier Stats */}
@@ -375,7 +366,7 @@ export default function CustomerRewards() {
               {/* Progress Bar Container */}
               <div className="w-full h-3 bg-[#1F1F1F] rounded-full overflow-hidden p-0.5 border border-[#2C2C2C]">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#E86A33] via-[#35B86B] to-[#35B86B] transition-all duration-700 ease-out shadow-[0_0_12px_rgba(53,184,107,0.5)]"
+                  className="h-full rounded-full bg-gradient-to-r from-[#E86A33] to-[#35B86B] transition-all duration-700 ease-out"
                   style={{ width: `${tierProgress.progressPercent}%` }}
                 ></div>
               </div>
@@ -412,7 +403,7 @@ export default function CustomerRewards() {
                 variant="primary"
                 fullWidth
                 onClick={() => navigate('/dashboard/customer/packages')}
-                className="text-xs sm:text-sm py-3 font-bold group shadow-lg shadow-[#E86A33]/20"
+                className="text-xs sm:text-sm py-3 font-bold group"
               >
                 Earn More Points
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -451,7 +442,7 @@ export default function CustomerRewards() {
                 key={tier.name}
                 className={`relative rounded-xl p-4.5 border transition-all flex flex-col justify-between ${
                   isCurrent
-                    ? 'bg-[#101010] border-[#E86A33] shadow-[0_0_20px_rgba(232,106,51,0.15)] ring-1 ring-[#E86A33]'
+                    ? 'bg-[#101010] border-[#E86A33] ring-1 ring-[#E86A33]'
                     : isCompleted
                     ? 'bg-[#121212] border-[#35B86B]/40 text-[#F5F5F5]'
                     : 'bg-[#101010]/60 border-[#2C2C2C] opacity-75'
@@ -510,12 +501,6 @@ export default function CustomerRewards() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Streak Card */}
         <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 flex flex-col justify-between shadow-lg relative overflow-hidden">
-          <div
-            className="absolute top-0 right-0 w-36 h-36 rounded-full pointer-events-none"
-            style={{
-              background: 'radial-gradient(circle, rgba(232,106,51,0.15) 0%, transparent 70%)',
-            }}
-          ></div>
 
           <div>
             <div className="flex items-center justify-between pb-3 border-b border-[#2C2C2C]">
@@ -741,7 +726,7 @@ export default function CustomerRewards() {
                   key={reward.id}
                   className={`bg-[#101010] border rounded-2xl p-5 flex flex-col justify-between transition-all relative overflow-hidden group ${
                     isRedeemable
-                      ? 'border-[#2C2C2C] hover:border-[#35B86B]/50 hover:shadow-lg hover:shadow-[#35B86B]/5'
+                      ? 'border-[#2C2C2C] hover:border-[#35B86B]/50'
                       : cooldown.onCooldown
                       ? 'border-[#E86A33]/30 bg-[#14100E]/70'
                       : 'border-[#2C2C2C]/60 opacity-80'
@@ -800,7 +785,7 @@ export default function CustomerRewards() {
                     {isRedeemable ? (
                       <button
                         onClick={() => setSelectedRewardToRedeem(reward)}
-                        className="px-4 py-2 text-xs font-bold bg-[#35B86B] hover:bg-[#35B86B]/90 text-white rounded-xl shadow-md shadow-[#35B86B]/20 transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
+                        className="px-4 py-2 text-xs font-bold bg-[#35B86B] hover:bg-[#35B86B]/90 text-white rounded-xl transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
                       >
                         Redeem
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -1077,7 +1062,7 @@ export default function CustomerRewards() {
               <button
                 onClick={handleConfirmRedemption}
                 disabled={isRedeeming}
-                className="flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs sm:text-sm bg-[#35B86B] hover:bg-[#35B86B]/90 text-white shadow-lg shadow-[#35B86B]/20 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs sm:text-sm bg-[#35B86B] hover:bg-[#35B86B]/90 text-white transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isRedeeming ? 'Redeeming...' : 'Confirm Redemption'}
               </button>

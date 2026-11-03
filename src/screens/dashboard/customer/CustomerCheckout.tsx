@@ -9,6 +9,10 @@ import { useToast } from '../../../contexts/ToastContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useNotifications } from '../../../contexts/NotificationsContext';
 import { saveAppointment, calculateCallOutFee, type StoredAppointment } from '../../../lib/appointments';
+import { formatDuration, resolveBookingPackage, workHoursFor } from '../../../lib/business';
+import { workTypeForService } from '../../../lib/scheduling';
+import { isSlotStillFree } from '../../../lib/availability';
+import { useBusinessSettings, useServices } from '../../../hooks/useOperations';
 import {
   calculateBookingPoints,
   awardBookingPoints,
@@ -37,12 +41,6 @@ import {
 } from 'lucide-react';
 
 // ─── Package catalogue matching CustomerBooking ──────────────────────────────
-const PACKAGES: Record<string, { name: string; price: number; duration: string; accentColor: string }> = {
-  express: { name: 'Express Wash',  price: 75,  duration: '20–30 min', accentColor: '#A1A1AA' },
-  premium: { name: 'Premium Wash', price: 275, duration: '60–75 min', accentColor: '#E86A33' },
-  elite:   { name: 'Elite Wash',   price: 875, duration: '2–3 hrs',   accentColor: '#35B86B' },
-};
-
 const PKG_ICON: Record<string, React.ReactNode> = {
   express: <Droplets className="w-4 h-4" />,
   premium: <Sparkles className="w-4 h-4" />,
@@ -50,12 +48,6 @@ const PKG_ICON: Record<string, React.ReactNode> = {
   custom:  <Sparkles className="w-4 h-4" />,
 };
 
-const INCLUDED: Record<string, string[]> = {
-  express: ['Exterior hand wash', 'Wheel rinse', 'Window wipe-down', 'Quick interior vacuum'],
-  premium: ['Full exterior wash & dry', 'Interior vacuum & wipe-down', 'Tyre dressing & rim shine', 'Window clean (inside & out)', 'Air freshener finish'],
-  elite:   ['Everything in Premium', 'Clay bar & paint correction', 'Ceramic coating application', 'Full leather conditioning', 'Engine bay clean'],
-  custom:  ['Tailored wash selection', 'Dedicated professional staff', 'WashWizzy satisfaction guarantee'],
-};
 
 const VAT = 0.15;
 function fmt(n: number) { return `R${n.toFixed(2)}`; }
@@ -97,6 +89,9 @@ interface BookingNavState {
   vehicle?: string;
   notes?: string;
   customOptionCount?: number;
+  customServices?: string[];
+  startHour?: number | null;
+  workHours?: number;
 }
 
 export default function CustomerCheckout() {
@@ -109,12 +104,10 @@ export default function CustomerCheckout() {
   // Read booking details from navigation state with safe fallbacks
   const navState = (location.state as BookingNavState | null) || {};
   const packageId: string = navState.packageId || 'premium';
-  const pkg = PACKAGES[packageId] || {
-    name: packageId === 'custom' ? 'Custom Package' : 'Premium Wash',
-    price: navState.price || 275,
-    duration: '60–75 min',
-    accentColor: '#E86A33',
-  };
+  // Price and duration come from the admin's catalogue; the call-out fee from business settings
+  const { items: services } = useServices();
+  const business = useBusinessSettings();
+  const pkg = resolveBookingPackage(services, packageId, navState.customServices || []);
 
   const bookingDate: string = navState.date || '';
   const bookingTime: string = navState.time || '';
@@ -180,7 +173,7 @@ export default function CustomerCheckout() {
     : null;
   const discountAmount = voucherResult?.applies ? voucherResult.discountAmount : 0;
 
-  const callOutFee = calculateCallOutFee(serviceType, hasMembership);
+  const callOutFee = calculateCallOutFee(serviceType, hasMembership, business.callOutFee);
   const discountedPkgPrice = Math.max(0, pkg.price - discountAmount);
   const subtotal = discountedPkgPrice + callOutFee;
   const vat = subtotal * VAT;
@@ -270,6 +263,24 @@ export default function CustomerCheckout() {
 
     setIsLoading(true);
 
+    // Re-check the time is still free right before paying (someone else may have taken it)
+    const startHour = typeof navState.startHour === 'number' ? navState.startHour : null;
+    const workHours = navState.workHours || workHoursFor(pkg.durationMinutes);
+    if (bookingDate && startHour !== null) {
+      const free = await isSlotStillFree({
+        date: bookingDate,
+        type: workTypeForService(serviceType),
+        startHour,
+        workHours,
+      }).catch(() => true);
+      if (!free) {
+        setIsLoading(false);
+        showToast('Sorry, that time was just taken. Pick another time and your card won’t be charged.', 'error');
+        navigate('/dashboard/customer/booking', { state: { ...navState, startHour: null } });
+        return;
+      }
+    }
+
     try {
       const formattedAddress = serviceType === 'Call-out' ? (streetAddress ? `${streetAddress}, ${city}` : '123 Main St, Apartment Complex') : '';
       const apptId = `WW-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -286,9 +297,11 @@ export default function CustomerCheckout() {
         customerEmail,
         customerPhone,
         packageName: pkg.name,
+        ...(pkg.id === 'custom' ? { customServiceNames: pkg.includes } : {}),
         price: fmt(total),
         date: displayDate,
         time: displayTime,
+        ...(bookingDate && startHour !== null ? { bookingDate, startHour, workHours } : {}),
         serviceType,
         address: formattedAddress,
         location: formattedAddress,
@@ -424,7 +437,7 @@ export default function CustomerCheckout() {
                 onClick={() => setPaymentMethod('card')}
                 className={`flex flex-col items-center justify-center gap-2 p-4 rounded-xl border text-center transition-all duration-150 ${
                   paymentMethod === 'card'
-                    ? 'bg-[#E86A33]/10 border-[#E86A33] text-[#F5F5F5] shadow-md shadow-[#E86A33]/15'
+                    ? 'bg-[#E86A33]/10 border-[#E86A33] text-[#F5F5F5]'
                     : 'bg-[#101010] border-[#2C2C2C] text-[#A1A1AA] hover:border-[#3C3C3C] hover:text-[#F5F5F5]'
                 }`}
               >
@@ -442,7 +455,7 @@ export default function CustomerCheckout() {
                 onClick={() => setPaymentMethod('apple_pay')}
                 className={`flex flex-col items-center justify-center gap-2 p-4 rounded-xl border text-center transition-all duration-150 ${
                   paymentMethod === 'apple_pay'
-                    ? 'bg-[#E86A33]/10 border-[#E86A33] text-[#F5F5F5] shadow-md shadow-[#E86A33]/15'
+                    ? 'bg-[#E86A33]/10 border-[#E86A33] text-[#F5F5F5]'
                     : 'bg-[#101010] border-[#2C2C2C] text-[#A1A1AA] hover:border-[#3C3C3C] hover:text-[#F5F5F5]'
                 }`}
               >
@@ -460,7 +473,7 @@ export default function CustomerCheckout() {
                 onClick={() => setPaymentMethod('google_pay')}
                 className={`flex flex-col items-center justify-center gap-2 p-4 rounded-xl border text-center transition-all duration-150 ${
                   paymentMethod === 'google_pay'
-                    ? 'bg-[#E86A33]/10 border-[#E86A33] text-[#F5F5F5] shadow-md shadow-[#E86A33]/15'
+                    ? 'bg-[#E86A33]/10 border-[#E86A33] text-[#F5F5F5]'
                     : 'bg-[#101010] border-[#2C2C2C] text-[#A1A1AA] hover:border-[#3C3C3C] hover:text-[#F5F5F5]'
                 }`}
               >
@@ -620,7 +633,7 @@ export default function CustomerCheckout() {
               </div>
               <div className="flex items-center gap-1.5 mt-1 text-xs text-[#71717A]">
                 <Clock className="w-3.5 h-3.5 text-[#E86A33]" />
-                Duration: {pkg.duration}
+                Duration: {formatDuration(pkg.durationMinutes)}
               </div>
             </div>
 
@@ -713,7 +726,7 @@ export default function CustomerCheckout() {
               <p className="text-[11px] font-semibold uppercase tracking-widest text-[#71717A] mb-0.5">
                 Included with your wash
               </p>
-              {(INCLUDED[packageId] || INCLUDED.premium).map((item: string) => (
+              {pkg.includes.map((item: string) => (
                 <div key={item} className="flex items-center gap-2 text-xs text-[#D4D4D4]">
                   <Check className="w-3.5 h-3.5 text-[#E86A33] shrink-0" />
                   {item}

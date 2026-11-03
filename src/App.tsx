@@ -34,6 +34,7 @@ import StaffDashboard from './screens/dashboard/staff/StaffDashboard';
 import StaffAppointments from './screens/dashboard/staff/StaffAppointments';
 import StaffReviews from './screens/dashboard/staff/StaffReviews';
 import StaffProfile from './screens/dashboard/staff/StaffProfile';
+import StaffWalkIns from './screens/dashboard/staff/StaffWalkIns';
 import AdminDashboardLayout from './screens/dashboard/admin/AdminDashboardLayout';
 import AdminDashboard from './screens/dashboard/admin/AdminDashboard';
 import AdminServiceManagement from './screens/dashboard/admin/AdminServiceManagement';
@@ -43,6 +44,10 @@ import AdminRescheduleAppointment from './screens/dashboard/admin/AdminReschedul
 import AdminBusinessAnalytics from './screens/dashboard/admin/AdminBusinessAnalytics';
 import AdminReviews from './screens/dashboard/admin/AdminReviews';
 import AdminNotifications from './screens/dashboard/admin/AdminNotifications';
+import AdminStaff from './screens/dashboard/admin/AdminStaff';
+import AdminSchedule from './screens/dashboard/admin/AdminSchedule';
+import AdminWalkIns from './screens/dashboard/admin/AdminWalkIns';
+import AdminCustomers from './screens/dashboard/admin/AdminCustomers';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -101,6 +106,7 @@ export default function App() {
               <Route path="appointments" element={<StaffAppointments />} />
               <Route path="reviews" element={<StaffReviews />} />
               <Route path="profile" element={<StaffProfile />} />
+              <Route path="walk-ins" element={<StaffWalkIns />} />
             </Route>
             <Route path="/dashboard/admin" element={
               <NotificationsProvider>
@@ -115,6 +121,10 @@ export default function App() {
               <Route path="appointments/reschedule/:customerUid/:appointmentId" element={<AdminRescheduleAppointment />} />
               <Route path="business-analytics" element={<AdminBusinessAnalytics />} />
               <Route path="reviews" element={<AdminReviews />} />
+              <Route path="staff" element={<AdminStaff />} />
+              <Route path="schedule" element={<AdminSchedule />} />
+              <Route path="walk-ins" element={<AdminWalkIns />} />
+              <Route path="customers" element={<AdminCustomers />} />
             </Route>
           </Routes>
           </BrowserRouter>

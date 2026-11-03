@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { collectionGroup, onSnapshot, query } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useNotifications } from "../contexts/NotificationsContext";
+import { sendCustomerNotification } from "../lib/appointments";
 
 /**
  * Real-time hook for administrators to automatically capture administrative events
@@ -73,6 +74,36 @@ export function useAdminNotificationSync(isAdmin: boolean) {
                   link: "/dashboard/admin/appointments",
                   eventId,
                 });
+              }
+            }
+
+            // Event: the customer moved their booking (no approval needed; the crew was unassigned)
+            if (data.rescheduledByRole === "customer" && data.rescheduledAt) {
+              const eventId = `admin-customer-move-${id}-${data.rescheduledAt}`;
+              if (!knownEventIds.has(eventId)) {
+                knownEventIds.add(eventId);
+                addNotification({
+                  category: "appointments",
+                  icon: "clock",
+                  iconColor: "text-[#E86A33]",
+                  iconBg: "bg-[#E86A33]/10",
+                  title: "Customer moved a booking",
+                  message: `${customerName} moved their ${packageName} to ${dateStr} at ${timeStr}. Assign a crew for the new time.`,
+                  link: "/dashboard/admin/schedule",
+                  eventId,
+                });
+                // Customers can't write to staff notifications, so the admin's app tells the old crew
+                const previous: string[] = Array.isArray(data.previousAssignedStaffUids) ? data.previousAssignedStaffUids : [];
+                previous.forEach((staffUid) =>
+                  sendCustomerNotification(staffUid, {
+                    title: "Job moved and unassigned",
+                    message: `${customerName} moved their ${packageName} to ${dateStr} at ${timeStr}, so you're no longer on it.`,
+                    category: "appointments",
+                    icon: "clock",
+                    link: "/dashboard/staff/appointments",
+                    eventId: `staff-unassigned-${id}-${data.rescheduledAt}-${staffUid}`,
+                  }).catch(() => {})
+                );
               }
             }
 

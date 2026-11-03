@@ -341,7 +341,7 @@ export default function AdminCancelAppointment() {
             isLoading={isSubmitting}
             disabled={!reason.trim() || isAlreadyCancelled || isAlreadyCompleted || isSubmitting}
             onClick={handleConfirmCancel}
-            className="!bg-red-600 hover:!bg-red-700 !text-white border-none gap-2 font-semibold shadow-md shadow-red-900/20"
+            className="!bg-red-600 hover:!bg-red-700 !text-white border-none gap-2 font-semibold"
           >
             <XCircle className="w-4 h-4" />
             Confirm Cancellation

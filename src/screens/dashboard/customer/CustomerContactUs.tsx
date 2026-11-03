@@ -246,7 +246,6 @@ export default function CustomerContactUs() {
           {/* Right Column - Quick Support Card */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-[#171717] rounded-xl border border-[#2C2C2C] overflow-hidden relative group p-6 h-full flex flex-col">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#E86A33]/5 to-transparent pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity duration-500"></div>
               
               <h2 className="text-xl font-display font-bold text-white mb-3">Quick Support</h2>
               <p className="text-[#A1A1AA] text-sm mb-8 leading-relaxed">
@@ -347,9 +346,8 @@ export default function CustomerContactUs() {
         {/* Location Section */}
         <div className="bg-[#171717] rounded-xl border border-[#2C2C2C] p-8 md:p-10 relative overflow-hidden text-center">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-[1px] bg-gradient-to-r from-transparent via-[#E86A33]/50 to-transparent"></div>
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-20 bg-[#E86A33]/20 blur-[60px] rounded-full pointer-events-none"></div>
           
-          <div className="w-16 h-16 bg-[#101010] rounded-full flex items-center justify-center mx-auto mb-6 border border-[#2C2C2C] shadow-[0_0_15px_rgba(232,106,51,0.15)] relative z-10">
+          <div className="w-16 h-16 bg-[#101010] rounded-full flex items-center justify-center mx-auto mb-6 border border-[#2C2C2C] relative z-10">
             <MapPin className="w-8 h-8 text-[#E86A33]" />
           </div>
           

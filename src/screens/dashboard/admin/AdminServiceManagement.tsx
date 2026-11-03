@@ -1,974 +1,579 @@
-import { useState, useEffect, useRef, useMemo, type FormEvent } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Archive, ArchiveRestore, CalendarX, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useToast } from "../../../contexts/ToastContext";
 import {
-  Plus,
-  Search,
-  Clock,
-  Pencil,
-  Trash2,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  PackageSearch,
-} from "lucide-react";
+  DAY_NAMES,
+  deleteService,
+  formatDuration,
+  formatHour,
+  formatRand,
+  saveBusinessSettings,
+  saveService,
+  seedDefaultServices,
+  SERVICE_CATEGORIES,
+  bookingCountsByService,
+  mostBookedIds,
+  toIsoDate,
+  type BusinessSettings,
+  type ServiceCategory,
+  type ServiceItem,
+  type ServiceKind,
+} from "../../../lib/business";
+import { subscribeToAllAppointments, type StoredAppointment } from "../../../lib/appointments";
+import { useBusinessSettings, useServices } from "../../../hooks/useOperations";
+import { Badge, Card, EmptyState, Field, Modal, SectionHeading, Tabs } from "../../../components/admin/AdminUI";
+import { inputClass, primaryButton, secondaryButton, smallButton } from "../../../components/admin/adminStyles";
 
-export type ServiceCategory = "Exterior" | "Interior" | "Full Detail";
-export type ServiceStatus = "Active" | "Inactive";
+type Tab = "packages" | "services" | "hours" | "fees";
 
-export interface ServiceItem {
-  id: string;
-  name: string;
-  category: ServiceCategory;
-  price: number;
-  duration: number; // in minutes
-  status: ServiceStatus;
-  createdAt: number;
-}
-
-const STORAGE_KEY = "ww_admin_services";
-const ITEMS_PER_PAGE = 5;
-
-const CATEGORIES = [
-  "All Services",
-  "Exterior",
-  "Interior",
-  "Full Detail",
-] as const;
-
-type FilterCategory = (typeof CATEGORIES)[number];
-
-// Safe loader for persisted services
-function loadStoredServices(): ServiceItem[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter((item): item is ServiceItem => {
-      return (
-        item &&
-        typeof item.id === "string" &&
-        typeof item.name === "string" &&
-        item.name.trim().length > 0 &&
-        ["Exterior", "Interior", "Full Detail"].includes(item.category) &&
-        typeof item.price === "number" &&
-        !isNaN(item.price) &&
-        item.price >= 0 &&
-        typeof item.duration === "number" &&
-        !isNaN(item.duration) &&
-        item.duration > 0 &&
-        ["Active", "Inactive"].includes(item.status)
-      );
-    });
-  } catch (err) {
-    console.error("Failed to load admin services from localStorage:", err);
-    return [];
-  }
-}
-
-function saveStoredServices(services: ServiceItem[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(services));
-  } catch (err) {
-    console.error("Failed to save admin services to localStorage:", err);
-  }
-}
-
-function formatRand(val: number): string {
-  return `R${val.toFixed(2)}`;
-}
-
+/**
+ * Services & Business: the catalogue customers book from (packages and individual
+ * services), plus opening days and fees. Everything here is saved to Firestore.
+ */
 export default function AdminServiceManagement() {
-  const [services, setServices] = useState<ServiceItem[]>(() =>
-    loadStoredServices()
-  );
-  const [selectedCategory, setSelectedCategory] =
-    useState<FilterCategory>("All Services");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [tab, setTab] = useState<Tab>("packages");
+  const { items, usingDefaults } = useServices();
+  const settings = useBusinessSettings();
+  const [appointments, setAppointments] = useState<StoredAppointment[]>([]);
+  useEffect(() => subscribeToAllAppointments(setAppointments), []);
 
-  // Modal states
-  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-  const [editingService, setEditingService] = useState<ServiceItem | null>(
-    null
-  );
-  const [deletingService, setDeletingService] = useState<ServiceItem | null>(
-    null
-  );
+  const bookedCount = useMemo(() => bookingCountsByService(appointments), [appointments]);
+  const mostBooked = useMemo(() => mostBookedIds(items, bookedCount), [items, bookedCount]);
 
-  // Sync to localStorage whenever services state changes
-  useEffect(() => {
-    saveStoredServices(services);
-  }, [services]);
-
-  // Combined filtering: Category & Search
-  const filteredServices = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-
-    return services.filter((service) => {
-      const matchesCategory =
-        selectedCategory === "All Services" ||
-        service.category === selectedCategory;
-
-      const matchesSearch =
-        query === "" ||
-        service.name.toLowerCase().includes(query) ||
-        service.category.toLowerCase().includes(query);
-
-      return matchesCategory && matchesSearch;
-    });
-  }, [services, selectedCategory, searchQuery]);
-
-  // Pagination calculations
-  const totalCount = filteredServices.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
-
-  // Reset or adjust current page if out of bounds
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedServices = filteredServices.slice(
-    startIndex,
-    startIndex + ITEMS_PER_PAGE
-  );
-
-  const displayStart = totalCount === 0 ? 0 : startIndex + 1;
-  const displayEnd = totalCount === 0 ? 0 : Math.min(startIndex + ITEMS_PER_PAGE, totalCount);
-
-  // Handlers for Add/Edit
-  const handleOpenAddModal = () => {
-    setEditingService(null);
-    setIsFormModalOpen(true);
-  };
-
-  const handleOpenEditModal = (service: ServiceItem) => {
-    setEditingService(service);
-    setIsFormModalOpen(true);
-  };
-
-  const handleCloseFormModal = () => {
-    setIsFormModalOpen(false);
-    setEditingService(null);
-  };
-
-  const handleSaveService = (data: {
-    name: string;
-    category: ServiceCategory;
-    price: number;
-    duration: number;
-    status: ServiceStatus;
-  }) => {
-    if (editingService) {
-      // Update existing
-      setServices((prev) =>
-        prev.map((s) =>
-          s.id === editingService.id
-            ? { ...s, ...data }
-            : s
-        )
-      );
-    } else {
-      // Create new
-      const newService: ServiceItem = {
-        id:
-          typeof crypto !== "undefined" && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `srv_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        ...data,
-        createdAt: Date.now(),
-      };
-      setServices((prev) => [newService, ...prev]);
-      // Reset to page 1 to see newly added service
-      setCurrentPage(1);
-    }
-    handleCloseFormModal();
-  };
-
-  // Handlers for Delete
-  const handleOpenDeleteModal = (service: ServiceItem) => {
-    setDeletingService(service);
-  };
-
-  const handleCloseDeleteModal = () => {
-    setDeletingService(null);
-  };
-
-  const handleConfirmDelete = () => {
-    if (!deletingService) return;
-    setServices((prev) => prev.filter((s) => s.id !== deletingService.id));
-    handleCloseDeleteModal();
-  };
-
-  // Page numbers for pagination
-  const pageNumbers = useMemo(() => {
-    const pages: number[] = [];
-    for (let i = 1; i <= totalPages; i++) {
-      pages.push(i);
-    }
-    return pages;
-  }, [totalPages]);
+  const packages = items.filter((s) => s.kind === "package");
+  const addons = items.filter((s) => s.kind === "addon");
 
   return (
-    <div className="w-full space-y-6">
-      {/* ─── Horizontal Toolbar ─── */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-        {/* Category filter buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          {CATEGORIES.map((cat) => {
-            const isSelected = selectedCategory === cat;
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => {
-                  setSelectedCategory(cat);
-                  setCurrentPage(1);
-                }}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer ${
-                  isSelected
-                    ? "bg-[#E86A33] text-white shadow-md shadow-[#E86A33]/25"
-                    : "bg-[#171717] text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.05] border border-[#2C2C2C]"
-                }`}
-              >
-                {cat}
-              </button>
-            );
-          })}
-        </div>
+    <div className="flex flex-col gap-6 pb-10 text-[#F5F5F5]">
+      <Tabs<Tab>
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: "packages", label: "Packages", count: packages.length },
+          { id: "services", label: "Individual services", count: addons.length },
+          { id: "hours", label: "Opening days" },
+          { id: "fees", label: "Fees" },
+        ]}
+      />
+      {(tab === "packages" || tab === "services") && usingDefaults && <DefaultsBanner />}
+      {tab === "packages" && (
+        <CatalogueTab kind="package" items={packages} bookedCount={bookedCount} mostBooked={mostBooked} usingDefaults={usingDefaults} />
+      )}
+      {tab === "services" && (
+        <CatalogueTab kind="addon" items={addons} bookedCount={bookedCount} mostBooked={mostBooked} usingDefaults={usingDefaults} />
+      )}
+      {tab === "hours" && <HoursTab settings={settings} />}
+      {tab === "fees" && <FeesTab settings={settings} />}
+    </div>
+  );
+}
 
-        {/* Search Field & Add Service Button */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="relative flex-1 sm:w-64 lg:w-72">
-            <Search className="w-4 h-4 text-[#A1A1AA] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="Search services"
-              className="w-full pl-10 pr-4 py-2.5 bg-[#171717] border border-[#2C2C2C] rounded-xl text-sm text-[#F5F5F5] placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#E86A33] focus:ring-1 focus:ring-[#E86A33] transition-all"
-            />
-          </div>
+function DefaultsBanner() {
+  const { showToast } = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Card className="p-5 flex items-center justify-between gap-4 flex-wrap border-[#E86A33]/30">
+      <div>
+        <p className="text-[15px] font-semibold text-[#F5F5F5]">Customers are seeing the built-in catalogue</p>
+        <p className="text-sm text-[#A1A1AA] mt-0.5">It's saved to your database the first time you add, edit or archive something. You can also save it now.</p>
+      </div>
+      <button
+        className={primaryButton}
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await seedDefaultServices();
+            showToast("Catalogue saved. You can edit it now.", "success");
+          } catch (e) {
+            showToast(e instanceof Error ? e.message : "Couldn't save the catalogue.", "error");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Start editing the catalogue
+      </button>
+    </Card>
+  );
+}
 
-          <button
-            type="button"
-            onClick={handleOpenAddModal}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#E86A33] hover:bg-[#cc5a2a] text-white font-semibold text-sm rounded-xl shadow-lg shadow-[#E86A33]/20 transition-all duration-200 shrink-0 cursor-pointer"
-          >
+// ─── Packages / individual services ──────────────────────────────────────────
+
+function CatalogueTab({
+  kind,
+  items,
+  bookedCount,
+  mostBooked,
+  usingDefaults,
+}: {
+  kind: ServiceKind;
+  items: ServiceItem[];
+  bookedCount: Record<string, number>;
+  mostBooked: Set<string>;
+  usingDefaults: boolean;
+}) {
+  const { showToast } = useToast();
+  const [editing, setEditing] = useState<ServiceItem | "new" | null>(null);
+  const [deleting, setDeleting] = useState<ServiceItem | null>(null);
+  const [search, setSearch] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const noun = kind === "package" ? "package" : "service";
+
+  const visible = items
+    .filter((s) => showArchived || s.status === "active")
+    .filter((s) => !search.trim() || `${s.name} ${s.category}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const archivedCount = items.filter((s) => s.status === "archived").length;
+
+  const setStatus = (s: ServiceItem, status: ServiceItem["status"]) =>
+    (usingDefaults ? seedDefaultServices() : Promise.resolve())
+      .then(() => saveService({ ...s, status }))
+      .then(() => showToast(status === "archived" ? `${s.name} archived. Customers can't book it.` : `${s.name} is bookable again.`, "success"))
+      .catch((e) => showToast(e.message, "error"));
+
+  return (
+    <div className="flex flex-col gap-5">
+      <SectionHeading
+        title={kind === "package" ? "Packages" : "Individual services"}
+        subtitle={
+          kind === "package"
+            ? "The wash packages customers choose from. Price changes apply to new bookings only."
+            : "Services customers combine into a custom package, and staff add to walk-in tickets"
+        }
+        action={
+          <button className={primaryButton} onClick={() => setEditing("new")}>
             <Plus className="w-4 h-4" />
-            Add Service
+            Add {noun}
           </button>
+        }
+      />
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
+          <Search className="w-4 h-4 text-[#71717A] absolute left-3 top-1/2 -translate-y-1/2" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`Search ${noun}s`} className={`${inputClass} pl-9`} />
         </div>
+        {archivedCount > 0 && (
+          <label className="inline-flex items-center gap-2 text-sm text-[#A1A1AA] cursor-pointer">
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="w-4 h-4 accent-[#E86A33]" />
+            Show archived ({archivedCount})
+          </label>
+        )}
       </div>
 
-      {/* ─── Services Table ─── */}
-      <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-[#2C2C2C] bg-[#171717] text-xs font-semibold text-[#A1A1AA] uppercase tracking-wider">
-                <th scope="col" className="py-4 px-6">
-                  Service
-                </th>
-                <th scope="col" className="py-4 px-6">
-                  Category
-                </th>
-                <th scope="col" className="py-4 px-6">
-                  Price
-                </th>
-                <th scope="col" className="py-4 px-6">
-                  Status
-                </th>
-                <th scope="col" className="py-4 px-6 text-right">
-                  Actions
-                </th>
+      <Card className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[760px]">
+          <thead>
+            <tr className="text-left text-[#71717A] text-xs">
+              <th className="px-5 py-3 font-medium">{kind === "package" ? "Package" : "Service"}</th>
+              {kind === "addon" && <th className="px-3 py-3 font-medium">Category</th>}
+              <th className="px-3 py-3 font-medium">Price</th>
+              <th className="px-3 py-3 font-medium">Duration</th>
+              <th className="px-3 py-3 font-medium">Booked</th>
+              <th className="px-3 py-3 font-medium">Status</th>
+              <th className="px-5 py-3 font-medium text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.length === 0 && (
+              <tr>
+                <td colSpan={7}>
+                  <EmptyState title={search ? `No ${noun}s match “${search}”` : `No ${noun}s yet`} />
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-[#2C2C2C]">
-              {paginatedServices.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-14 text-center text-[#A1A1AA]">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <div className="w-12 h-12 rounded-2xl bg-[#1F1F1F] border border-[#2C2C2C] flex items-center justify-center text-[#71717A] mb-1">
-                        <PackageSearch className="w-6 h-6" />
-                      </div>
-                      <p className="text-base font-semibold text-[#F5F5F5]">
-                        No services found
-                      </p>
-                      <p className="text-sm text-[#A1A1AA] max-w-sm">
-                        {services.length === 0
-                          ? "Get started by adding your first service to the catalog."
-                          : "Try adjusting your category filter or search keywords."}
-                      </p>
+            )}
+            {visible.map((s) => {
+              const booked = bookedCount[s.name.toLowerCase()] || 0;
+              return (
+                <tr key={s.id} className={`border-t border-[#2C2C2C] ${s.status === "archived" ? "opacity-60" : ""}`}>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-[#F5F5F5]">{s.name}</span>
+                      {mostBooked.has(s.id) && <Badge tone="orange">Most booked</Badge>}
+                    </div>
+                    {(s.tagline || s.description) && (
+                      <p className="text-xs text-[#71717A] mt-0.5 max-w-md truncate">{s.tagline || s.description}</p>
+                    )}
+                  </td>
+                  {kind === "addon" && <td className="px-3 py-3.5 text-[#D4D4D4]">{s.category}</td>}
+                  <td className="px-3 py-3.5 font-semibold text-[#F5F5F5]">{formatRand(s.price)}</td>
+                  <td className="px-3 py-3.5 text-[#D4D4D4]">{formatDuration(s.durationMinutes)}</td>
+                  <td className="px-3 py-3.5 text-[#D4D4D4]">{booked}</td>
+                  <td className="px-3 py-3.5">
+                    {s.status === "active" ? <Badge tone="green">Bookable</Badge> : <Badge>Archived</Badge>}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button className={smallButton} onClick={() => setEditing(s)} aria-label={`Edit ${s.name}`}>
+                        <Pencil className="w-3.5 h-3.5" />
+                        Edit
+                      </button>
+                      {s.status === "active" ? (
+                        <button className={smallButton} onClick={() => setStatus(s, "archived")} title="Hide from customers, keep history">
+                          <Archive className="w-3.5 h-3.5" />
+                          Archive
+                        </button>
+                      ) : (
+                        <button className={smallButton} onClick={() => setStatus(s, "active")}>
+                          <ArchiveRestore className="w-3.5 h-3.5" />
+                          Restore
+                        </button>
+                      )}
+                      <button
+                        className={`${smallButton} hover:!border-red-500 hover:text-red-400`}
+                        disabled={booked > 0}
+                        title={booked > 0 ? "Booked before. Archive it instead so receipts keep their details." : "Delete permanently"}
+                        onClick={() => setDeleting(s)}
+                        aria-label={`Delete ${s.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </td>
                 </tr>
-              ) : (
-                paginatedServices.map((service) => (
-                  <tr
-                    key={service.id}
-                    className="hover:bg-white/[0.02] transition-colors"
-                  >
-                    {/* 1. Service Name & Duration */}
-                    <td className="py-4 px-6">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-[15px] text-[#F5F5F5]">
-                          {service.name}
-                        </span>
-                        <div className="flex items-center gap-1.5 text-xs text-[#A1A1AA] mt-1">
-                          <Clock className="w-3.5 h-3.5 text-[#A1A1AA]" />
-                          <span>{service.duration} min</span>
-                        </div>
-                      </div>
-                    </td>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
 
-                    {/* 2. Category */}
-                    <td className="py-4 px-6">
-                      <span className="text-sm text-[#D8D5CF]">
-                        {service.category}
-                      </span>
-                    </td>
-
-                    {/* 3. Price */}
-                    <td className="py-4 px-6">
-                      <span className="text-sm font-semibold text-[#F5F5F5]">
-                        {formatRand(service.price)}
-                      </span>
-                    </td>
-
-                    {/* 4. Status Badge */}
-                    <td className="py-4 px-6">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                          service.status === "Active"
-                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                            : "bg-zinc-500/15 text-zinc-400 border border-zinc-500/25"
-                        }`}
-                      >
-                        {service.status}
-                      </span>
-                    </td>
-
-                    {/* 5. Actions */}
-                    <td className="py-4 px-6 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditModal(service)}
-                          className="p-2 rounded-lg text-[#A1A1AA] hover:text-[#E86A33] hover:bg-white/[0.04] transition-colors cursor-pointer"
-                          aria-label={`Edit ${service.name}`}
-                          title="Edit service"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDeleteModal(service)}
-                          className="p-2 rounded-lg text-[#A1A1AA] hover:text-red-400 hover:bg-white/[0.04] transition-colors cursor-pointer"
-                          aria-label={`Delete ${service.name}`}
-                          title="Delete service"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* ─── Table Footer / Pagination ─── */}
-        <div className="px-6 py-4 border-t border-[#2C2C2C] flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#171717]">
-          <div className="text-sm text-[#A1A1AA]">
-            Showing <span className="font-semibold text-[#F5F5F5]">{displayStart}</span> to{" "}
-            <span className="font-semibold text-[#F5F5F5]">{displayEnd}</span> of{" "}
-            <span className="font-semibold text-[#F5F5F5]">{totalCount}</span> services
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1 || totalCount === 0}
-              aria-label="Previous page"
-              className="p-2 rounded-lg text-sm font-medium border border-[#2C2C2C] bg-[#171717] text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-
-            {pageNumbers.map((num) => (
-              <button
-                key={num}
-                type="button"
-                onClick={() => setCurrentPage(num)}
-                aria-label={`Page ${num}`}
-                aria-current={currentPage === num ? "page" : undefined}
-                className={`min-w-[36px] h-9 px-3 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-                  currentPage === num
-                    ? "bg-[#E86A33] text-white font-semibold shadow-sm"
-                    : "border border-[#2C2C2C] bg-[#171717] text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.04]"
-                }`}
-              >
-                {num}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages || totalCount === 0}
-              aria-label="Next page"
-              className="p-2 rounded-lg text-sm font-medium border border-[#2C2C2C] bg-[#171717] text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Add / Edit Service Modal (Portalled) ─── */}
-      {isFormModalOpen && (
-        <ServiceFormModal
-          isOpen={isFormModalOpen}
-          editingService={editingService}
-          onClose={handleCloseFormModal}
-          onSave={handleSaveService}
+      {editing && (
+        <ServiceModal
+          kind={kind}
+          item={editing === "new" ? null : editing}
+          nextOrder={Math.max(0, ...items.map((i) => i.sortOrder)) + 1}
+          usingDefaults={usingDefaults}
+          onClose={() => setEditing(null)}
         />
       )}
 
-      {/* ─── Delete Confirmation Dialog (Portalled) ─── */}
-      {deletingService && (
-        <DeleteConfirmModal
-          service={deletingService}
-          onClose={handleCloseDeleteModal}
-          onConfirm={handleConfirmDelete}
-        />
+      {deleting && (
+        <Modal
+          title={`Delete ${deleting.name}?`}
+          description="It has never been booked, so nothing else depends on it. This can't be undone."
+          onClose={() => setDeleting(null)}
+          footer={
+            <>
+              <button onClick={() => setDeleting(null)} className={secondaryButton}>Keep it</button>
+              <button
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 text-sm font-semibold cursor-pointer"
+                onClick={async () => {
+                  try {
+                    if (usingDefaults) await seedDefaultServices();
+                    await deleteService(deleting.id);
+                    showToast(`${deleting.name} deleted.`, "success");
+                  } catch (e) {
+                    showToast(e instanceof Error ? e.message : "Couldn't delete it.", "error");
+                  }
+                  setDeleting(null);
+                }}
+              >
+                Delete
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm text-[#D4D4D4]">{deleting.name} · {formatRand(deleting.price)}</p>
+        </Modal>
       )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Add / Edit Service Modal Component
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface ServiceFormModalProps {
-  isOpen: boolean;
-  editingService: ServiceItem | null;
-  onClose: () => void;
-  onSave: (data: {
-    name: string;
-    category: ServiceCategory;
-    price: number;
-    duration: number;
-    status: ServiceStatus;
-  }) => void;
-}
-
-function ServiceFormModal({
-  isOpen,
-  editingService,
+function ServiceModal({
+  kind,
+  item,
+  nextOrder,
+  usingDefaults,
   onClose,
-  onSave,
-}: ServiceFormModalProps) {
-  const modalRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+}: {
+  kind: ServiceKind;
+  item: ServiceItem | null;
+  nextOrder: number;
+  usingDefaults: boolean;
+  onClose: () => void;
+}) {
+  const { showToast } = useToast();
+  const [form, setForm] = useState({
+    name: item?.name ?? "",
+    tagline: item?.tagline ?? "",
+    description: item?.description ?? "",
+    category: (item?.category ?? (kind === "package" ? "Full Detail" : "Exterior")) as ServiceCategory,
+    price: item ? String(item.price) : "",
+    durationMinutes: item ? String(item.durationMinutes) : "60",
+    includes: (item?.includes ?? []).join("\n"),
+  });
+  const [saving, setSaving] = useState(false);
+  const price = Number(form.price);
+  const duration = Number(form.durationMinutes);
+  const problem = !form.name.trim()
+    ? "Add a name."
+    : form.price === "" || !Number.isFinite(price) || price < 0
+      ? "Add a price of R0 or more."
+      : !Number.isFinite(duration) || duration < 5
+        ? "Duration must be at least 5 minutes."
+        : duration > 600
+          ? "Duration can be at most 10 hours (600 minutes)."
+          : null;
 
-  const [name, setName] = useState(editingService?.name || "");
-  const [category, setCategory] = useState<string>(
-    editingService?.category || ""
-  );
-  const [price, setPrice] = useState<string>(
-    editingService !== null ? String(editingService.price) : ""
-  );
-  const [duration, setDuration] = useState<string>(
-    editingService !== null ? String(editingService.duration) : ""
-  );
-  const [status, setStatus] = useState<ServiceStatus>(
-    editingService?.status || "Active"
-  );
-
-  const [errors, setErrors] = useState<{
-    name?: string;
-    category?: string;
-    price?: string;
-    duration?: string;
-  }>({});
-
-  // Focus trap & background scroll lock
-  useEffect(() => {
-    if (!isOpen) return;
-
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    // Focus first input
-    const timer = setTimeout(() => {
-      const firstInput = modalRef.current?.querySelector<HTMLElement>(
-        "input, select, button"
-      );
-      firstInput?.focus();
-    }, 50);
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (e.key === "Tab") {
-        if (!modalRef.current) return;
-        const focusables = Array.from(
-          modalRef.current.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-          )
-        );
-        if (focusables.length === 0) return;
-
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-
-        if (e.shiftKey) {
-          if (document.activeElement === first) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else {
-          if (document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      clearTimeout(timer);
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-      previousFocusRef.current?.focus();
-    };
-  }, [isOpen, onClose]);
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-
-    const newErrors: {
-      name?: string;
-      category?: string;
-      price?: string;
-      duration?: string;
-    } = {};
-
-    // 1. Service Name — required, not blank
-    if (!name.trim()) {
-      newErrors.name = "Service name is required.";
+  const save = async () => {
+    setSaving(true);
+    try {
+      // The first change saves the built-in catalogue to the database
+      if (usingDefaults) await seedDefaultServices();
+      const id =
+        item?.id ??
+        (form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `svc-${Date.now()}`) +
+          `-${Date.now().toString(36).slice(-4)}`;
+      await saveService({
+        id,
+        kind,
+        name: form.name.trim(),
+        tagline: form.tagline.trim(),
+        description: form.description.trim(),
+        category: form.category,
+        price,
+        durationMinutes: duration,
+        includes: form.includes.split("\n").map((l) => l.trim()).filter(Boolean),
+        popular: item?.popular ?? false,
+        status: item?.status ?? "active",
+        sortOrder: item?.sortOrder ?? nextOrder,
+        createdAt: item?.createdAt || Date.now(),
+      });
+      showToast(item ? `${form.name.trim()} updated.` : `${form.name.trim()} added.`, "success");
+      onClose();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Couldn't save.", "error");
+    } finally {
+      setSaving(false);
     }
-
-    // 2. Category — required
-    if (
-      !category ||
-      !["Exterior", "Interior", "Full Detail"].includes(category)
-    ) {
-      newErrors.category = "Please select a category.";
-    }
-
-    // 3. Price — zero or greater
-    const priceNum = parseFloat(price);
-    if (price.trim() === "" || isNaN(priceNum) || priceNum < 0) {
-      newErrors.price = "Price must be zero or greater.";
-    }
-
-    // 4. Duration — positive whole number
-    const durationNum = Number(duration);
-    if (
-      duration.trim() === "" ||
-      isNaN(durationNum) ||
-      !Number.isInteger(durationNum) ||
-      durationNum <= 0
-    ) {
-      newErrors.duration = "Duration must be a positive whole number.";
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    onSave({
-      name: name.trim(),
-      category: category as ServiceCategory,
-      price: priceNum,
-      duration: durationNum,
-      status,
-    });
   };
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200"
-      role="presentation"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
+  const hours = Math.max(1, Math.ceil(duration / 60));
+  return (
+    <Modal
+      wide
+      title={item ? `Edit ${item.name}` : `Add a ${kind === "package" ? "package" : "service"}`}
+      onClose={onClose}
+      footer={
+        <>
+          {problem && <p className="mr-auto self-center text-xs text-[#A1A1AA]">{problem}</p>}
+          <button onClick={onClose} className={secondaryButton}>Cancel</button>
+          <button onClick={save} disabled={!!problem || saving} className={primaryButton}>
+            {item ? "Save changes" : "Add"}
+          </button>
+        </>
+      }
     >
-      <div
-        ref={modalRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-heading"
-        className="bg-[#171717] border border-[#2C2C2C] rounded-2xl w-full max-w-[420px] shadow-2xl relative flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200 text-[#F5F5F5]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-col flex-1 overflow-hidden"
-          noValidate
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4.5 border-b border-[#2C2C2C]">
-            <h2
-              id="modal-heading"
-              className="text-lg font-bold font-display text-[#F5F5F5]"
-            >
-              {editingService ? "Edit Service" : "Add Service"}
-            </h2>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.06] transition-colors cursor-pointer"
-              aria-label="Close dialog"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Field label="Name">
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} />
+        </Field>
+        {kind === "package" ? (
+          <Field label="Tagline">
+            <input value={form.tagline} onChange={(e) => setForm({ ...form, tagline: e.target.value })} className={inputClass} placeholder="Spotless inside and out" />
+          </Field>
+        ) : (
+          <Field label="Category">
+            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as ServiceCategory })} className={inputClass}>
+              {SERVICE_CATEGORIES.filter((c) => c !== "Full Detail").map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <Field label="Price (R)">
+          <input type="number" min={0} step="1" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputClass} />
+        </Field>
+        <Field label="Duration (minutes)" hint={`Blocks ${hours} hour${hours > 1 ? "s" : ""} in the schedule${kind === "package" ? ", plus 1 travel hour for call-outs" : ""}`}>
+          <input type="number" min={5} max={600} step="5" value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })} className={inputClass} />
+        </Field>
+        <div className="md:col-span-2">
+          <Field label="Description">
+            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className={inputClass} />
+          </Field>
+        </div>
+        {kind === "package" && (
+          <div className="md:col-span-2">
+            <Field label="What's included" hint="One item per line; shown on the package card">
+              <textarea value={form.includes} onChange={(e) => setForm({ ...form, includes: e.target.value })} rows={5} className={inputClass} />
+            </Field>
           </div>
-
-          {/* Body */}
-          <div className="p-6 space-y-4.5 overflow-y-auto flex-1">
-            {/* Service Name */}
-            <div>
-              <label
-                htmlFor="service-name-input"
-                className="block text-xs font-semibold text-[#A1A1AA] uppercase tracking-wider mb-1.5"
-              >
-                Service Name <span className="text-[#E86A33]">*</span>
-              </label>
-              <input
-                id="service-name-input"
-                type="text"
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  if (errors.name) {
-                    setErrors((prev) => ({ ...prev, name: undefined }));
-                  }
-                }}
-                placeholder="e.g. Express Exterior Wash"
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-[#101010] border ${
-                  errors.name
-                    ? "border-red-500 focus:ring-red-500/30"
-                    : "border-[#2C2C2C] focus:border-[#E86A33] focus:ring-[#E86A33]/30"
-                } text-sm text-[#F5F5F5] placeholder:text-[#71717A] outline-none focus:ring-2 transition-all`}
-              />
-              {errors.name && (
-                <p className="mt-1 text-xs text-red-500">{errors.name}</p>
-              )}
-            </div>
-
-            {/* Category */}
-            <div>
-              <label
-                htmlFor="service-category-select"
-                className="block text-xs font-semibold text-[#A1A1AA] uppercase tracking-wider mb-1.5"
-              >
-                Category <span className="text-[#E86A33]">*</span>
-              </label>
-              <select
-                id="service-category-select"
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value);
-                  if (errors.category) {
-                    setErrors((prev) => ({ ...prev, category: undefined }));
-                  }
-                }}
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-[#101010] border ${
-                  errors.category
-                    ? "border-red-500 focus:ring-red-500/30"
-                    : "border-[#2C2C2C] focus:border-[#E86A33] focus:ring-[#E86A33]/30"
-                } text-sm text-[#F5F5F5] outline-none focus:ring-2 transition-all cursor-pointer`}
-              >
-                <option value="" disabled>
-                  Select category
-                </option>
-                <option value="Exterior">Exterior</option>
-                <option value="Interior">Interior</option>
-                <option value="Full Detail">Full Detail</option>
-              </select>
-              {errors.category && (
-                <p className="mt-1 text-xs text-red-500">{errors.category}</p>
-              )}
-            </div>
-
-            {/* Price (ZAR) */}
-            <div>
-              <label
-                htmlFor="service-price-input"
-                className="block text-xs font-semibold text-[#A1A1AA] uppercase tracking-wider mb-1.5"
-              >
-                Price (ZAR) <span className="text-[#E86A33]">*</span>
-              </label>
-              <input
-                id="service-price-input"
-                type="number"
-                step="0.01"
-                min="0"
-                value={price}
-                onChange={(e) => {
-                  setPrice(e.target.value);
-                  if (errors.price) {
-                    setErrors((prev) => ({ ...prev, price: undefined }));
-                  }
-                }}
-                placeholder="e.g. 100.00"
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-[#101010] border ${
-                  errors.price
-                    ? "border-red-500 focus:ring-red-500/30"
-                    : "border-[#2C2C2C] focus:border-[#E86A33] focus:ring-[#E86A33]/30"
-                } text-sm text-[#F5F5F5] placeholder:text-[#71717A] outline-none focus:ring-2 transition-all`}
-              />
-              {errors.price && (
-                <p className="mt-1 text-xs text-red-500">{errors.price}</p>
-              )}
-            </div>
-
-            {/* Duration (minutes) */}
-            <div>
-              <label
-                htmlFor="service-duration-input"
-                className="block text-xs font-semibold text-[#A1A1AA] uppercase tracking-wider mb-1.5"
-              >
-                Duration (minutes) <span className="text-[#E86A33]">*</span>
-              </label>
-              <input
-                id="service-duration-input"
-                type="number"
-                step="1"
-                min="1"
-                value={duration}
-                onChange={(e) => {
-                  setDuration(e.target.value);
-                  if (errors.duration) {
-                    setErrors((prev) => ({ ...prev, duration: undefined }));
-                  }
-                }}
-                placeholder="e.g. 20"
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-[#101010] border ${
-                  errors.duration
-                    ? "border-red-500 focus:ring-red-500/30"
-                    : "border-[#2C2C2C] focus:border-[#E86A33] focus:ring-[#E86A33]/30"
-                } text-sm text-[#F5F5F5] placeholder:text-[#71717A] outline-none focus:ring-2 transition-all`}
-              />
-              {errors.duration && (
-                <p className="mt-1 text-xs text-red-500">{errors.duration}</p>
-              )}
-            </div>
-
-            {/* Status */}
-            <div>
-              <label
-                htmlFor="service-status-select"
-                className="block text-xs font-semibold text-[#A1A1AA] uppercase tracking-wider mb-1.5"
-              >
-                Status
-              </label>
-              <select
-                id="service-status-select"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as ServiceStatus)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#101010] border border-[#2C2C2C] focus:border-[#E86A33] focus:ring-[#E86A33]/30 text-sm text-[#F5F5F5] outline-none focus:ring-2 transition-all cursor-pointer"
-              >
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#2C2C2C] bg-[#171717]">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-[#2C2C2C] text-sm font-semibold text-[#F5F5F5] hover:bg-white/[0.05] transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2.5 rounded-xl bg-[#E86A33] hover:bg-[#cc5a2a] text-sm font-semibold text-white shadow-md shadow-[#E86A33]/25 transition-all cursor-pointer"
-            >
-              Save Service
-            </button>
-          </div>
-        </form>
+        )}
+        <p className="md:col-span-2 text-xs text-[#71717A]">
+          The “Most booked” tag is added automatically to whichever {kind === "package" ? "package" : "service"} customers book most.
+        </p>
       </div>
-    </div>,
-    document.body
+    </Modal>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Delete Confirmation Modal Component
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Opening days ────────────────────────────────────────────────────────────
 
-interface DeleteConfirmModalProps {
-  service: ServiceItem;
-  onClose: () => void;
-  onConfirm: () => void;
+const HOUR_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 6); // 06:00–22:00
+
+function HoursTab({ settings }: { settings: BusinessSettings }) {
+  const { showToast } = useToast();
+  const [draft, setDraft] = useState<BusinessSettings | null>(null);
+  const [newDate, setNewDate] = useState("");
+  const current = draft ?? settings;
+  const dirty = draft !== null;
+  const today = toIsoDate(new Date());
+  // Monday first, Sunday last
+  const order = [1, 2, 3, 4, 5, 6, 0];
+
+  const setDay = (i: number, patch: Partial<BusinessSettings["days"][number]>) =>
+    setDraft({ ...current, days: current.days.map((d, j) => (j === i ? { ...d, ...patch } : d)) });
+
+  const save = async () => {
+    const bad = current.days.find((d) => d.open && d.end <= d.start);
+    if (bad) {
+      showToast("Closing time must be after opening time.", "error");
+      return;
+    }
+    try {
+      await saveBusinessSettings({ days: current.days, closedDates: current.closedDates });
+      showToast("Opening days saved. Customers see the new times straight away.", "success");
+      setDraft(null);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Couldn't save.", "error");
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
+      <Card className="xl:col-span-2 p-6 flex flex-col gap-4">
+        <SectionHeading
+          title="Weekly hours"
+          subtitle="Customers can book from opening time until an hour before closing"
+          action={
+            dirty && (
+              <div className="flex gap-2">
+                <button onClick={() => setDraft(null)} className={secondaryButton}>Discard</button>
+                <button onClick={save} className={primaryButton}>Save hours</button>
+              </div>
+            )
+          }
+        />
+        <div className="flex flex-col">
+          {order.map((i) => {
+            const d = current.days[i];
+            return (
+              <div key={i} className="flex items-center gap-4 py-3 border-t border-[#2C2C2C] first:border-t-0 flex-wrap">
+                <label className="flex items-center gap-3 w-40 cursor-pointer">
+                  <input type="checkbox" checked={d.open} onChange={(e) => setDay(i, { open: e.target.checked })} className="w-4 h-4 accent-[#E86A33]" />
+                  <span className="text-sm font-semibold text-[#F5F5F5]">{DAY_NAMES[i]}</span>
+                </label>
+                {d.open ? (
+                  <div className="flex items-center gap-2 text-sm text-[#A1A1AA]">
+                    <select value={d.start} onChange={(e) => setDay(i, { start: Number(e.target.value) })} className={`${inputClass} w-auto py-1.5`} aria-label={`${DAY_NAMES[i]} opens`}>
+                      {HOUR_OPTIONS.map((h) => <option key={h} value={h}>{formatHour(h)}</option>)}
+                    </select>
+                    to
+                    <select value={d.end} onChange={(e) => setDay(i, { end: Number(e.target.value) })} className={`${inputClass} w-auto py-1.5`} aria-label={`${DAY_NAMES[i]} closes`}>
+                      {HOUR_OPTIONS.map((h) => <option key={h} value={h}>{formatHour(h)}</option>)}
+                    </select>
+                  </div>
+                ) : (
+                  <span className="text-sm text-[#71717A]">Closed</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card className="p-6 flex flex-col gap-4">
+        <SectionHeading title="Closed dates" subtitle="Public holidays or one-off closures" />
+        <div className="flex gap-2">
+          <input type="date" min={today} value={newDate} onChange={(e) => setNewDate(e.target.value)} className={inputClass} aria-label="Date to close" />
+          <button
+            className={secondaryButton}
+            disabled={!newDate || current.closedDates.includes(newDate)}
+            onClick={() => {
+              setDraft({ ...current, closedDates: [...current.closedDates, newDate].sort() });
+              setNewDate("");
+            }}
+          >
+            Add
+          </button>
+        </div>
+        {current.closedDates.filter((d) => d >= today).length === 0 ? (
+          <p className="text-sm text-[#71717A]">No upcoming closures.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {current.closedDates
+              .filter((d) => d >= today)
+              .map((d) => (
+                <li key={d} className="flex items-center gap-3 rounded-xl bg-[#101010] border border-[#2C2C2C] px-3 py-2.5">
+                  <CalendarX className="w-4 h-4 text-[#E86A33]" />
+                  <span className="flex-1 text-sm text-[#F5F5F5]">
+                    {new Date(d + "T00:00:00").toLocaleDateString("en-ZA", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}
+                  </span>
+                  <button
+                    onClick={() => setDraft({ ...current, closedDates: current.closedDates.filter((x) => x !== d) })}
+                    className="p-1.5 rounded-lg text-[#71717A] hover:text-red-400 cursor-pointer"
+                    aria-label="Remove closed date"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </li>
+              ))}
+          </ul>
+        )}
+        {dirty && (
+          <button onClick={save} className={primaryButton}>Save closures</button>
+        )}
+      </Card>
+    </div>
+  );
 }
 
-function DeleteConfirmModal({
-  service,
-  onClose,
-  onConfirm,
-}: DeleteConfirmModalProps) {
-  const modalRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+// ─── Fees ────────────────────────────────────────────────────────────────────
 
-  // Focus trap & background scroll lock
-  useEffect(() => {
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
+function FeesTab({ settings }: { settings: BusinessSettings }) {
+  const { showToast } = useToast();
+  const [draft, setDraft] = useState<Record<string, string> | null>(null);
+  const values = draft ?? {
+    callOutFee: String(settings.callOutFee),
+    membershipMonthly: String(settings.membershipMonthly),
+    membershipAnnual: String(settings.membershipAnnual),
+  };
+  const set = (k: string, v: string) => setDraft({ ...values, [k]: v });
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+  const save = async () => {
+    const parsed = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, Number(v)]));
+    if (Object.values(parsed).some((n) => !Number.isFinite(n) || n < 0)) {
+      showToast("Enter amounts of R0 or more.", "error");
+      return;
+    }
+    try {
+      await saveBusinessSettings(parsed);
+      showToast("Fees saved. New bookings use the new amounts.", "success");
+      setDraft(null);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Couldn't save.", "error");
+    }
+  };
 
-    const timer = setTimeout(() => {
-      const cancelBtn = modalRef.current?.querySelector<HTMLElement>("button");
-      cancelBtn?.focus();
-    }, 50);
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (e.key === "Tab") {
-        if (!modalRef.current) return;
-        const focusables = Array.from(
-          modalRef.current.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
-          )
-        );
-        if (focusables.length === 0) return;
-
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-
-        if (e.shiftKey) {
-          if (document.activeElement === first) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else {
-          if (document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      clearTimeout(timer);
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-      previousFocusRef.current?.focus();
-    };
-  }, [onClose]);
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200"
-      role="presentation"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <div
-        ref={modalRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="delete-modal-title"
-        aria-describedby="delete-modal-desc"
-        className="bg-[#171717] border border-[#2C2C2C] rounded-2xl w-full max-w-[400px] p-6 shadow-2xl relative animate-in zoom-in-95 duration-200 text-[#F5F5F5]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h3
-            id="delete-modal-title"
-            className="text-lg font-bold font-display text-[#F5F5F5]"
-          >
-            Delete Service
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.06] transition-colors cursor-pointer"
-            aria-label="Close dialog"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <p
-          id="delete-modal-desc"
-          className="text-sm text-[#A1A1AA] leading-relaxed mb-6"
-        >
-          Are you sure you want to delete{" "}
-          <span className="font-semibold text-[#F5F5F5]">{service.name}</span>?
-          This action cannot be undone.
-        </p>
-
-        <div className="flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-[#2C2C2C] text-sm font-semibold text-[#F5F5F5] hover:bg-white/[0.05] transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-sm font-semibold text-white shadow-md shadow-red-600/20 transition-all cursor-pointer"
-          >
-            Delete
-          </button>
-        </div>
+  return (
+    <Card className="p-6 flex flex-col gap-5 max-w-2xl">
+      <SectionHeading title="Fees" subtitle="Applied to new bookings and sign-ups. Existing bookings keep what the customer agreed to." />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Field label="Call-out fee (R)" hint="Charged to non-members for mobile washes">
+          <input type="number" min={0} value={values.callOutFee} onChange={(e) => set("callOutFee", e.target.value)} className={inputClass} />
+        </Field>
+        <Field label="Membership, monthly (R)">
+          <input type="number" min={0} value={values.membershipMonthly} onChange={(e) => set("membershipMonthly", e.target.value)} className={inputClass} />
+        </Field>
+        <Field label="Membership, yearly (R)">
+          <input type="number" min={0} value={values.membershipAnnual} onChange={(e) => set("membershipAnnual", e.target.value)} className={inputClass} />
+        </Field>
       </div>
-    </div>,
-    document.body
+      <div className="flex gap-2">
+        <button onClick={save} disabled={!draft} className={primaryButton}>Save fees</button>
+        {draft && <button onClick={() => setDraft(null)} className={secondaryButton}>Discard</button>}
+      </div>
+    </Card>
   );
 }

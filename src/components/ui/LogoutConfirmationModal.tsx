@@ -61,7 +61,7 @@ export default function LogoutConfirmationModal({
         className="bg-[#171717] border border-[#2C2C2C] rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl relative overflow-hidden text-left animate-in zoom-in-95 duration-200 transition-colors"
       >
         {/* Top subtle accent gradient */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#E86A33] via-orange-400 to-[#E86A33]" />
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
 
         {/* Close icon button */}
         <button
@@ -119,7 +119,7 @@ export default function LogoutConfirmationModal({
             onClick={onConfirm}
             isLoading={isLoading}
             disabled={isLoading}
-            className="py-2.5 text-sm font-bold bg-[#E86A33] hover:bg-[#cc5a2a] text-white shadow-lg shadow-[#E86A33]/25"
+            className="py-2.5 text-sm font-bold bg-[#E86A33] hover:bg-[#cc5a2a] text-white"
           >
             {isLoading ? 'Logging out...' : 'Log Out'}
           </Button>

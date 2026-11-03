@@ -95,7 +95,7 @@ export default function PaymentSuccessModal({
             left: 0,
             right: 0,
             height: '3px',
-            background: 'linear-gradient(to right, #E86A33, #35B86B, #E86A33)',
+            background: 'linear-gradient(to right, #E86A33, rgba(232,106,51,0.5), transparent)',
           }}
         />
 

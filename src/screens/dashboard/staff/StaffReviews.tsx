@@ -6,7 +6,6 @@ import {
   MessageSquare,
   Filter,
   Calendar,
-  Clock,
   Car,
   Image as ImageIcon,
   X,
@@ -105,7 +104,7 @@ export default function StaffReviews() {
                 "Missing or insufficient permissions: The live Firebase project has rejected the reviews query. Deploy the updated security rules using 'firebase deploy --only firestore:rules --project washwizzy-dev-49122'."
               );
             } else {
-              setLoadError(errMsg || "Unable to load reviews. Please check your connection.");
+              setLoadError(`Failed to load reviews: ${errMsg}`);
             }
             setIsReviewsLoading(false);
           }
@@ -113,193 +112,160 @@ export default function StaffReviews() {
       })
       .catch((err) => {
         if (!isMounted) return;
-        console.warn("User role verification warning:", err);
-        // If checking role doc fails (e.g. offline/rules), still attempt subscription if staff UID is present
-        unsub = subscribeToStaffReviews(
-          currentUser.uid,
-          (list) => {
-            if (!isMounted) return;
-            setReviews(list);
-            setIsReviewsLoading(false);
-            setLoadError(null);
-          },
-          (queryErr: unknown) => {
-            if (!isMounted) return;
-            console.error("Staff reviews subscription error:", queryErr);
-            const errObj = queryErr as { code?: string; message?: string };
-            const errMsg = errObj?.message || String(queryErr);
-            const isPerm =
-              errObj?.code === "permission-denied" ||
-              errMsg.toLowerCase().includes("permission") ||
-              errMsg.toLowerCase().includes("missing or insufficient");
-
-            setIsPermissionError(isPerm);
-            if (isPerm) {
-              setLoadError(
-                "Missing or insufficient permissions: Ensure your staff account is verified and the latest Firestore security rules are deployed."
-              );
-            } else {
-              setLoadError(errMsg || "Unable to load reviews.");
-            }
-            setIsReviewsLoading(false);
-          }
-        );
+        console.error("Role verification failed:", err);
+        setLoadError("Failed to verify staff permissions. Please check your connection and retry.");
+        setIsReviewsLoading(false);
       });
 
     return () => {
       isMounted = false;
       if (unsub) unsub();
     };
-  }, [currentUser?.uid, authLoading, retryKey]);
+  }, [authLoading, currentUser?.uid, retryKey]);
 
-  // Derived Review Statistics
-  const stats: StaffReviewStats = useMemo(() => {
-    return calculateStaffReviewStats(reviews);
-  }, [reviews]);
-
-  // Initials generator
-  const getInitials = (name: string): string => {
-    if (!name) return "CU";
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  // Reset pagination on filter or sort change
+  const handleFilterChange = (filter: StarFilter) => {
+    setStarFilter(filter);
+    setVisibleCount(6);
   };
 
-  // Filter & Sort logic
+  const handleSortChange = (sort: SortOption) => {
+    setSortBy(sort);
+    setVisibleCount(6);
+  };
+
+  // ─── Filter & Sort Operations ─────────────────────────────────────────────
   const filteredAndSortedReviews = useMemo(() => {
     let result = [...reviews];
 
-    // Filter by Star Rating
+    // Filter by star rating
     if (starFilter !== "all") {
-      result = result.filter((r) => Math.round(r.rating) === starFilter);
+      result = result.filter((r) => r.rating === starFilter);
     }
 
     // Sort
     result.sort((a, b) => {
-      if (sortBy === "newest") {
-        return (b.createdAt || 0) - (a.createdAt || 0);
-      }
       if (sortBy === "highest") {
-        if (b.rating !== a.rating) return b.rating - a.rating;
-        return (b.createdAt || 0) - (a.createdAt || 0);
+        return b.rating - a.rating;
       }
       if (sortBy === "lowest") {
-        if (a.rating !== b.rating) return a.rating - b.rating;
-        return (b.createdAt || 0) - (a.createdAt || 0);
+        return a.rating - b.rating;
       }
-      return 0;
+      // "newest" by default
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
     });
 
     return result;
   }, [reviews, starFilter, sortBy]);
 
+  // Visible sliced list for pagination
   const visibleReviews = filteredAndSortedReviews.slice(0, visibleCount);
   const hasMore = visibleCount < filteredAndSortedReviews.length;
 
+  // Review statistics calculation
+  const stats: StaffReviewStats = useMemo(() => {
+    return calculateStaffReviewStats(reviews);
+  }, [reviews]);
+
   return (
-    <div className="w-full flex flex-col gap-6 pb-12">
-      {/* ─── 1. Metrics & Rating Breakdown Header ─────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left: Overall Rating & Counts (7 cols) */}
-        <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-5">
-          {/* Average Rating Card */}
-          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 shadow-xl flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-[#71717A]">
-                Average Customer Rating
+    <div className="space-y-8 animate-fadeIn">
+      {/* ─── 1. Review Summary Statistics (4 Cards) ───────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {/* Card 1: Average Rating */}
+        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+          <div>
+            <span className="text-xs font-medium text-[#A1A1AA] uppercase tracking-wider block">
+              Average Rating
+            </span>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-3xl font-black font-display text-[#F5F5F5]">
+                {stats.totalReviews > 0 ? stats.averageRatingDisplay : "0.0"}
               </span>
-              <div className="w-9 h-9 rounded-xl bg-[#F59E0B]/10 border border-[#F59E0B]/20 flex items-center justify-center text-[#F59E0B]">
-                <Star className="w-4 h-4 fill-[#F59E0B]" />
-              </div>
+              <span className="text-xs text-[#71717A]">/ 5.0</span>
             </div>
-
-            <div className="mt-4">
-              <div className="flex items-baseline gap-2">
-                <span className="text-4xl sm:text-5xl font-black font-display text-[#F5F5F5] tracking-tight">
-                  {stats.totalReviews > 0 ? stats.averageRatingDisplay : "0.0"}
-                </span>
-                <span className="text-sm font-semibold text-[#71717A]">/ 5.0</span>
-              </div>
-
-              {/* 5-Star Row */}
-              <div className="flex items-center gap-1.5 mt-2">
-                {[1, 2, 3, 4, 5].map((s) => (
+            <div className="flex items-center gap-1 mt-2">
+              {[1, 2, 3, 4, 5].map((star) => {
+                const isFilled = star <= Math.round(stats.averageRating);
+                return (
                   <Star
-                    key={s}
+                    key={star}
                     className={`w-4 h-4 ${
-                      stats.totalReviews > 0 && s <= Math.round(stats.averageRating)
-                        ? "text-[#E86A33] fill-[#E86A33]"
-                        : "text-[#2C2C2C] fill-transparent"
+                      isFilled ? "text-[#F59E0B] fill-[#F59E0B]" : "text-[#3F3F46]"
                     }`}
                   />
-                ))}
-                <span className="text-xs text-[#A1A1AA] ml-1 font-medium">
-                  {stats.totalReviews > 0
-                    ? `(${stats.totalReviews} ${stats.totalReviews === 1 ? "rating" : "ratings"})`
-                    : "No ratings yet"}
-                </span>
-              </div>
+                );
+              })}
             </div>
           </div>
+          <span className="text-[11px] text-[#71717A] mt-3">
+            {stats.totalReviews > 0
+              ? `Calculated across ${stats.totalReviews} review${stats.totalReviews === 1 ? "" : "s"}`
+              : "No customer ratings yet"}
+          </span>
+        </div>
 
-          {/* Total Reviews & Monthly Volume */}
-          <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 shadow-xl flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-[#71717A]">
-                Review Volume
-              </span>
-              <div className="w-9 h-9 rounded-xl bg-[#E86A33]/10 border border-[#E86A33]/20 flex items-center justify-center text-[#E86A33]">
-                <MessageSquare className="w-4 h-4" />
-              </div>
+        {/* Card 2: Total Reviews */}
+        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+          <div>
+            <span className="text-xs font-medium text-[#A1A1AA] uppercase tracking-wider block">
+              Total Reviews
+            </span>
+            <div className="text-3xl font-black font-display text-[#F5F5F5] mt-2">
+              {stats.totalReviews}
             </div>
-
-            <div className="mt-4">
-              <div className="text-4xl sm:text-5xl font-black font-display text-[#F5F5F5] tracking-tight">
-                {stats.totalReviews}
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30">
-                  +{stats.thisMonthCount} this month
-                </span>
-                <span className="text-xs text-[#71717A]">Published feedback</span>
-              </div>
-            </div>
+            <p className="text-xs text-[#A1A1AA] mt-1">
+              Published reviews attributed to your completed washes
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-[#35B86B] font-medium mt-3">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Verified Customer Reviews</span>
           </div>
         </div>
 
-        {/* Right: Simple 1–5 Star Rating Breakdown (5 cols) */}
-        <div className="lg:col-span-5 bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 shadow-xl flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-widest text-[#71717A]">
-              Rating Breakdown
+        {/* Card 3: Reviews Received This Month */}
+        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+          <div>
+            <span className="text-xs font-medium text-[#A1A1AA] uppercase tracking-wider block">
+              This Month
             </span>
-            <span className="text-xs text-[#A1A1AA] font-medium">
-              {stats.totalReviews} total
-            </span>
+            <div className="text-3xl font-black font-display text-[#E86A33] mt-2">
+              {stats.thisMonthCount}
+            </div>
+            <p className="text-xs text-[#A1A1AA] mt-1">
+              Feedback submitted in the current calendar month
+            </p>
           </div>
+          <span className="text-[11px] text-[#71717A] mt-3">
+            Updated in real time
+          </span>
+        </div>
 
-          <div className="space-y-2">
-            {[5, 4, 3, 2, 1].map((stars) => {
-              const count = stats.ratingDistribution[stars] || 0;
-              const pct = stats.totalReviews > 0 ? (count / stats.totalReviews) * 100 : 0;
+        {/* Card 4: Star Rating Breakdown (1–5 Stars) */}
+        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+          <span className="text-xs font-medium text-[#A1A1AA] uppercase tracking-wider block mb-2">
+            Rating Breakdown
+          </span>
+          <div className="space-y-1.5 flex-1 flex flex-col justify-center">
+            {([5, 4, 3, 2, 1] as const).map((rating) => {
+              const count = stats.ratingDistribution[rating] || 0;
+              const percentage =
+                stats.totalReviews > 0 ? (count / stats.totalReviews) * 100 : 0;
 
               return (
-                <div key={stars} className="flex items-center gap-3 text-xs">
-                  <div className="flex items-center gap-1 w-10 shrink-0 text-[#A1A1AA] font-semibold">
-                    <span>{stars}</span>
-                    <Star className="w-3 h-3 text-[#E86A33] fill-[#E86A33]" />
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="flex-1 h-2 rounded-full bg-[#101010] border border-[#2C2C2C] overflow-hidden">
+                <div key={rating} className="flex items-center gap-2 text-xs">
+                  <span className="w-3 text-right font-medium text-[#A1A1AA]">
+                    {rating}★
+                  </span>
+                  <div className="flex-1 h-2 bg-[#262626] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-[#E86A33] to-[#FFA26B] rounded-full transition-all duration-500"
-                      style={{ width: `${pct}%` }}
+                      className="h-full bg-[#E86A33] transition-all duration-500 rounded-full"
+                      style={{ width: `${percentage}%` }}
                     />
                   </div>
-
-                  {/* Count & Percentage */}
-                  <span className="w-8 text-right font-mono text-[#71717A] text-[11px] shrink-0">
+                  <span className="w-6 text-right font-mono text-[11px] text-[#71717A]">
                     {count}
                   </span>
                 </div>
@@ -309,223 +275,202 @@ export default function StaffReviews() {
         </div>
       </div>
 
-      {/* ─── 2. Controls Bar: Filter by Star & Sort ───────────────────────── */}
-      <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-4 sm:p-5 shadow-lg flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        {/* Star Rating Pills */}
+      {/* ─── 2. Controls Bar: Star Filter, Sort & Count ─────────────────────── */}
+      <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-4 sm:p-5 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Star Rating Filter Pills */}
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-bold uppercase tracking-wider text-[#71717A] mr-1 hidden sm:inline">
-            Filter:
+          <span className="text-xs font-medium text-[#71717A] mr-1 flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5" /> Filter:
           </span>
-          {(["all", 5, 4, 3, 2, 1] as StarFilter[]).map((filterVal) => {
-            const isActive = starFilter === filterVal;
-            const label = filterVal === "all" ? "All Stars" : `${filterVal}★`;
-
+          {(
+            [
+              { label: "All", value: "all" },
+              { label: "5 ★", value: 5 },
+              { label: "4 ★", value: 4 },
+              { label: "3 ★", value: 3 },
+              { label: "2 ★", value: 2 },
+              { label: "1 ★", value: 1 },
+            ] as const
+          ).map((item) => {
+            const isActive = starFilter === item.value;
             return (
               <button
-                key={String(filterVal)}
+                key={String(item.value)}
                 type="button"
-                onClick={() => {
-                  setStarFilter(filterVal);
-                  setVisibleCount(6);
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                onClick={() => handleFilterChange(item.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   isActive
-                    ? "bg-[#E86A33] text-white shadow-md shadow-[#E86A33]/20"
-                    : "bg-[#101010] text-[#A1A1AA] border border-[#2C2C2C] hover:text-[#F5F5F5] hover:border-[#3C3C3C]"
+                    ? "bg-[#E86A33] text-white shadow-sm"
+                    : "bg-[#101010] text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-[#202020] border border-[#2C2C2C]"
                 }`}
               >
-                {label}
+                {item.label}
               </button>
             );
           })}
         </div>
 
-        {/* Sort Select */}
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs font-bold uppercase tracking-wider text-[#71717A] hidden sm:inline">
-            Sort by:
-          </span>
+        {/* Sorting Dropdown */}
+        <div className="flex items-center gap-3 self-end md:self-auto">
+          <span className="text-xs font-medium text-[#71717A]">Sort by:</span>
           <div className="relative">
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortOption)}
-              className="bg-[#101010] border border-[#2C2C2C] text-[#F5F5F5] rounded-xl pl-3.5 pr-8 py-2 text-xs font-semibold appearance-none outline-none focus:border-[#E86A33] transition-colors cursor-pointer"
+              onChange={(e) => handleSortChange(e.target.value as SortOption)}
+              className="bg-[#101010] border border-[#2C2C2C] text-[#F5F5F5] text-xs font-semibold rounded-lg px-3 py-1.5 pr-8 appearance-none focus:outline-none focus:border-[#E86A33] transition-colors cursor-pointer"
             >
               <option value="newest">Newest First</option>
               <option value="highest">Highest Rating</option>
               <option value="lowest">Lowest Rating</option>
             </select>
-            <ChevronDown className="w-3.5 h-3.5 text-[#71717A] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-[#71717A] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
       </div>
 
-      {/* ─── 3. Main Reviews Display Area ─────────────────────────────────── */}
+      {/* ─── 3. Content States: Loading, Error, Empty, and Review List ──────── */}
       {isLoading ? (
-        // Loading Skeleton
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 animate-pulse space-y-4"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#2C2C2C]" />
-                  <div className="space-y-2">
-                    <div className="w-28 h-3.5 bg-[#2C2C2C] rounded" />
-                    <div className="w-20 h-2.5 bg-[#2C2C2C] rounded" />
-                  </div>
-                </div>
-                <div className="w-16 h-4 bg-[#2C2C2C] rounded" />
-              </div>
-              <div className="w-full h-12 bg-[#101010] rounded-xl" />
-            </div>
-          ))}
+        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-12 text-center flex flex-col items-center justify-center">
+          <div className="w-8 h-8 border-2 border-[#E86A33] border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-sm text-[#A1A1AA]">Loading your assigned customer reviews...</p>
         </div>
       ) : displayedError ? (
-        // Error State
         <div className="bg-[#171717] border border-red-500/30 rounded-2xl p-8 text-center flex flex-col items-center justify-center">
-          <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-3">
+          <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 mb-3">
             <AlertCircle className="w-6 h-6" />
           </div>
           <h3 className="text-base font-bold text-[#F5F5F5] mb-1">
-            {isPermissionError ? "Permissions / Deployment Notice" : "Unable to Load Reviews"}
+            {isPermissionError ? "Permissions Notice" : "Unable to load reviews"}
           </h3>
-          <p className="text-xs text-[#A1A1AA] mb-4 max-w-lg leading-relaxed">{displayedError}</p>
-          {isPermissionError && (
-            <div className="bg-[#101010] border border-[#2C2C2C] rounded-xl p-3.5 text-left mb-4 max-w-lg w-full">
-              <span className="text-[11px] font-bold text-[#E86A33] uppercase tracking-wider block mb-1">
-                Deploy Firestore Rules & Indexes:
-              </span>
-              <code className="text-xs text-[#35B86B] font-mono select-all block break-all bg-black/40 px-2.5 py-1.5 rounded">
-                firebase deploy --only firestore:rules,firestore:indexes --project washwizzy-dev-49122
-              </code>
-            </div>
-          )}
+          <p className="text-xs text-[#A1A1AA] max-w-md mb-4 leading-relaxed">
+            {displayedError}
+          </p>
           <Button
             type="button"
             variant="outline"
             onClick={() => setRetryKey((k) => k + 1)}
-            className="text-xs py-2 px-4"
+            className="text-xs px-4 py-2"
           >
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-            Retry
+            <RefreshCw className="w-3.5 h-3.5 mr-2" />
+            Retry Query
           </Button>
         </div>
       ) : reviews.length === 0 ? (
-        // Empty State: Staff has no reviews yet
         <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-12 text-center flex flex-col items-center justify-center">
-          <div className="w-16 h-16 rounded-2xl bg-[#101010] border border-[#2C2C2C] flex items-center justify-center text-[#71717A] mb-4">
-            <MessageSquare className="w-8 h-8 text-[#E86A33]/70" />
+          <div className="w-14 h-14 rounded-2xl bg-[#101010] border border-[#2C2C2C] flex items-center justify-center text-[#71717A] mb-3">
+            <MessageSquare className="w-7 h-7" />
           </div>
-          <h3 className="text-lg font-bold font-display text-[#F5F5F5] mb-1.5">
-            You haven’t received any reviews yet
+          <h3 className="text-base font-bold text-[#F5F5F5] mb-1">
+            You haven't received any reviews yet
           </h3>
-          <p className="text-xs text-[#A1A1AA] max-w-md leading-relaxed">
-            As customers complete their wash services assigned to you, their ratings, comments, and photos will appear right here. Keep up the high standard of service!
+          <p className="text-xs text-[#A1A1AA] max-w-sm leading-relaxed">
+            When customers review washes you completed, their feedback, star ratings, and wash details will appear here automatically.
           </p>
         </div>
       ) : filteredAndSortedReviews.length === 0 ? (
-        // No filter results state
         <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-10 text-center flex flex-col items-center justify-center">
-          <div className="w-12 h-12 rounded-2xl bg-[#101010] border border-[#2C2C2C] flex items-center justify-center text-[#71717A] mb-3">
-            <Filter className="w-6 h-6 text-[#71717A]" />
-          </div>
-          <h3 className="text-base font-bold text-[#F5F5F5] mb-1">
-            No matching reviews found
-          </h3>
-          <p className="text-xs text-[#A1A1AA] mb-4 max-w-sm">
-            There are no reviews with a {starFilter}-star rating.
+          <p className="text-sm font-semibold text-[#F5F5F5] mb-1">
+            No reviews match this filter
           </p>
-          <button
+          <p className="text-xs text-[#A1A1AA] mb-4">
+            Try choosing a different star rating or resetting the filter.
+          </p>
+          <Button
             type="button"
-            onClick={() => setStarFilter("all")}
-            className="text-xs font-bold text-[#E86A33] hover:underline"
+            variant="outline"
+            onClick={() => handleFilterChange("all")}
+            className="text-xs px-4 py-2"
           >
-            Clear Filter & Show All Reviews
-          </button>
+            Reset Filter
+          </Button>
         </div>
       ) : (
-        // Reviews List (Readable Cards)
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {visibleReviews.map((rev) => {
               const reviewDate = rev.createdAt
-                ? new Date(rev.createdAt).toLocaleDateString("en-ZA", {
-                    day: "numeric",
+                ? new Date(rev.createdAt).toLocaleDateString(undefined, {
                     month: "short",
+                    day: "numeric",
                     year: "numeric",
                   })
                 : "Recent";
 
+              const appointmentDate = rev.appointmentDate
+                ? new Date(rev.appointmentDate).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                : null;
+
               return (
                 <div
                   key={rev.id}
-                  className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 shadow-lg flex flex-col justify-between hover:border-[#3C3C3C] transition-all"
+                  className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-5 sm:p-6 shadow-lg flex flex-col justify-between hover:border-[#E86A33]/40 transition-colors"
                 >
                   <div>
-                    {/* Top Header: Customer Info & Rating */}
+                    {/* Top row: Customer Avatar & Name, Rating & Date */}
                     <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        {/* Customer Avatar / Initials */}
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#2C2C2C] to-[#1F1F1F] border border-[#3C3C3C] text-[#F5F5F5] font-bold text-sm flex items-center justify-center shrink-0">
-                          {getInitials(rev.customerName || "Customer")}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-[#E86A33]/15 text-[#E86A33] font-bold text-sm flex items-center justify-center font-display border border-[#E86A33]/30">
+                          {rev.customerName
+                            ? rev.customerName.substring(0, 2).toUpperCase()
+                            : "CU"}
                         </div>
-
-                        <div className="min-w-0">
-                          <h4 className="text-sm font-bold text-[#F5F5F5] truncate">
-                            {rev.customerName || "Valued Customer"}
+                        <div>
+                          <h4 className="text-sm font-bold text-[#F5F5F5]">
+                            {rev.customerName || "Verified Customer"}
                           </h4>
                           <span className="text-[11px] text-[#71717A] flex items-center gap-1 mt-0.5">
-                            <Clock className="w-3 h-3" />
-                            Reviewed on {reviewDate}
+                            <Car className="w-3 h-3 text-[#E86A33]" />
+                            {rev.serviceName || "Car Wash Service"}
                           </span>
                         </div>
                       </div>
 
-                      {/* Stars */}
-                      <div className="flex items-center gap-1 shrink-0 bg-[#101010] px-2.5 py-1.5 rounded-lg border border-[#2C2C2C]">
-                        {[1, 2, 3, 4, 5].map((s) => (
-                          <Star
-                            key={s}
-                            className={`w-3.5 h-3.5 ${
-                              s <= rev.rating
-                                ? "text-[#E86A33] fill-[#E86A33]"
-                                : "text-[#2C2C2C] fill-transparent"
-                            }`}
-                          />
-                        ))}
-                        <span className="text-xs font-bold text-[#F5F5F5] ml-1">
-                          {rev.rating.toFixed(1)}
+                      {/* Stars & Review Date */}
+                      <div className="text-right">
+                        <div className="flex items-center gap-0.5 justify-end">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-3.5 h-3.5 ${
+                                star <= rev.rating
+                                  ? "text-[#F59E0B] fill-[#F59E0B]"
+                                  : "text-[#3F3F46]"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-[10px] text-[#71717A] block mt-1">
+                          {reviewDate}
                         </span>
                       </div>
                     </div>
 
-                    {/* Service & Booking Details Strip */}
-                    <div className="flex flex-wrap items-center gap-2 mb-3 pt-2 border-t border-[#2C2C2C]/50 text-xs">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#E86A33]/10 text-[#E86A33] border border-[#E86A33]/20 font-semibold">
-                        <Car className="w-3.5 h-3.5" />
-                        {rev.serviceName || "Car Wash Service"}
-                      </span>
+                    {/* Metadata: Appointment Date if available */}
+                    {appointmentDate && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#71717A] mb-3">
+                        <Calendar className="w-3 h-3" />
+                        <span>Wash completed on {appointmentDate}</span>
+                      </div>
+                    )}
 
-                      {rev.appointmentDate && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#101010] text-[#A1A1AA] border border-[#2C2C2C]">
-                          <Calendar className="w-3.5 h-3.5 text-[#71717A]" />
-                          {rev.appointmentDate}
-                        </span>
-                      )}
-
-                      <span className="inline-flex items-center gap-1 text-[11px] text-[#35B86B] font-medium ml-auto">
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        Verified Completed Wash
-                      </span>
-                    </div>
-
-                    {/* Customer Feedback Comment */}
-                    <p className="text-sm text-[#D8D5CF] leading-relaxed whitespace-pre-line bg-[#101010]/50 p-3.5 rounded-xl border border-[#2C2C2C]/50">
+                    {/* Review Feedback Comment */}
+                    <p className="text-xs text-[#D4D4D4] leading-relaxed italic bg-[#101010] p-3.5 rounded-xl border border-[#2C2C2C]/50">
                       "{rev.comment}"
                     </p>
+
+                    {/* Owner reply if present */}
+                    {rev.ownerReply && (
+                      <div className="mt-3 text-xs text-[#A1A1AA] border-l-2 border-[#E86A33] pl-3 py-1.5 bg-[#101010]/60 rounded-r">
+                        <span className="font-semibold text-[#E86A33] block text-[11px] mb-0.5">
+                          Owner replied
+                        </span>
+                        {rev.ownerReply}
+                      </div>
+                    )}
                   </div>
 
                   {/* Customer Review Photos (with larger preview modal) */}

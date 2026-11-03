@@ -19,8 +19,10 @@ import { useAuth } from '../../../contexts/AuthContext';
 import {
   subscribeToStaffAppointments,
   parseAppointmentDateTime,
-  markAppointmentCompleted,
 } from '../../../lib/appointments';
+import type { AdminAppointment } from '../../../lib/appointmentSlots';
+import { workTypeForService } from '../../../lib/scheduling';
+import JobStatusControl from '../../../components/staff/JobStatusControl';
 
 interface StaffAppointmentItem {
   id: string;
@@ -45,6 +47,8 @@ interface StaffAppointmentItem {
   cancelledAt?: number;
   cancelledByRole?: string;
   previousSchedule?: { date: string; time: string };
+  /** The stored booking, for the job status steps */
+  raw: AdminAppointment;
 }
 
 export default function StaffAppointments() {
@@ -166,6 +170,7 @@ export default function StaffAppointments() {
             cancelledAt: data.cancelledAt,
             cancelledByRole: data.cancelledByRole,
             previousSchedule: data.previousSchedule,
+            raw: data,
           };
         });
         setAppointments(mapped);
@@ -227,39 +232,6 @@ export default function StaffAppointments() {
     if (activeTab === 'history') return historyAppointments;
     return activeAppointments; // 'all' -> all active assigned jobs
   }, [activeTab, todayAppointments, upcomingAppointments, historyAppointments, activeAppointments]);
-
-  const handleMarkCompleted = async (appt: StaffAppointmentItem) => {
-    if (
-      isHistoricalAppointment(appt) ||
-      isAppointmentPast(appt.date, appt.time, appt.status === 'Missed')
-    ) {
-      console.warn('Cannot mark a historical or past appointment as completed.');
-      return;
-    }
-
-    const nextCompleted = !appt.completed;
-    // Optimistic local state update
-    setAppointments((prev) =>
-      prev.map((item) =>
-        item.id === appt.id
-          ? {
-              ...item,
-              completed: nextCompleted,
-              status: nextCompleted ? 'Completed' : 'Confirmed',
-              badgeColor: 'reward-green',
-            }
-          : item
-      )
-    );
-
-    if (appt.customerUid) {
-      try {
-        await markAppointmentCompleted(appt.customerUid, appt.id);
-      } catch (err) {
-        console.error('Failed to mark appointment completed:', err);
-      }
-    }
-  };
 
   return (
     <div className="flex flex-col gap-6 text-[#F5F5F5] font-sans pb-12">
@@ -383,6 +355,12 @@ export default function StaffAppointments() {
                       {isToday && !isHistoricalAppointment(appt) && !isAppointmentPast(appt.date, appt.time, appt.status === 'Missed') && (
                         <span className="text-[11px] font-semibold text-[#35B86B] bg-[#35B86B]/10 px-2 py-0.5 rounded-full border border-[#35B86B]/20">
                           Today&apos;s Job
+                        </span>
+                      )}
+
+                      {(appt.raw.assignedStaffUids?.length ?? 0) > 1 && (
+                        <span className="text-[11px] font-semibold text-[#E86A33] bg-[#E86A33]/10 px-2 py-0.5 rounded-full border border-[#E86A33]/20">
+                          Crew: {appt.staffName}
                         </span>
                       )}
                     </div>
@@ -521,15 +499,14 @@ export default function StaffAppointments() {
                             : 'Missed booking'}
                         </span>
                       ) : (
-                        <Button
-                          type="button"
-                          variant="primary"
-                          onClick={() => handleMarkCompleted(appt)}
-                          className="!py-2 !px-3.5 !text-xs font-semibold gap-1.5 !bg-[#35B86B] hover:!bg-[#2da15d] !text-white cursor-pointer"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          Mark Completed
-                        </Button>
+                        <JobStatusControl
+                          appt={appt.raw}
+                          type={workTypeForService(appt.raw.serviceType)}
+                          byName={appt.staffName}
+                          canStart={isToday}
+                          notStartedHint="You can start on the day"
+                          compact
+                        />
                       )}
 
                       <button

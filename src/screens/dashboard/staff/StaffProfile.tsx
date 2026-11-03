@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
-  User,
   Mail,
   Phone,
   ShieldCheck,
@@ -16,6 +15,7 @@ import {
   Check,
   ArrowRight,
   Car,
+  Briefcase,
 } from "lucide-react";
 import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { updateProfile } from "firebase/auth";
@@ -40,10 +40,15 @@ import {
   type CustomerReview,
   type StaffReviewStats,
 } from "../../../lib/reviews";
+import { useStaffWorkday } from "../../../hooks/useStaffWorkday";
+import { formatHour } from "../../../lib/business";
+import { WORK_TYPE_LABELS } from "../../../lib/staffOps";
+import LunchControl from "../../../components/staff/LunchControl";
 
 export default function StaffProfile() {
-  const { currentUser, loading: authLoading, refreshUser } = useAuth();
+  const { currentUser, refreshUser } = useAuth();
   const { showToast } = useToast();
+  const day = useStaffWorkday();
   const uid = currentUser?.uid;
 
   // ─── Profile State ────────────────────────────────────────────────────────
@@ -94,524 +99,535 @@ export default function StaffProfile() {
     const userDocRef = doc(db, "users", uid);
     const unsub = onSnapshot(
       userDocRef,
-      (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          const name =
-            data.displayName ||
-            data.fullName ||
-            currentUser?.displayName ||
-            "Staff Member";
-          const ph = data.phone || data.phoneNumber || "";
-          const emp = data.employeeId || "";
-          const em = data.email || currentUser?.email || "";
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+        const data = snapshot.data();
 
-          setDisplayName(name);
-          setPhone(ph);
-          setEmployeeId(emp);
-          setEmail(em);
+        const nameFromDb = data.fullName || data.name || data.displayName;
+        if (nameFromDb) {
+          setDisplayName(nameFromDb);
+          localStorage.setItem(`ww_profile_name_${uid}`, nameFromDb);
+        }
 
-          if (data.photoURL) {
-            setPhotoURL(data.photoURL);
-          } else if (currentUser?.photoURL) {
-            setPhotoURL(currentUser.photoURL);
-          }
+        const phoneFromDb = data.phoneNumber || data.phone;
+        if (phoneFromDb) {
+          setPhone(phoneFromDb);
+          localStorage.setItem(`ww_profile_phone_${uid}`, phoneFromDb);
+        }
 
-          // Format account creation date
-          if (data.createdAt?.toDate) {
-            const dateObj = data.createdAt.toDate();
-            setCreatedAtStr(
-              dateObj.toLocaleDateString("en-ZA", {
-                year: "numeric",
-                month: "short",
-                day: "numeric",
-              })
-            );
-          } else if (currentUser?.metadata?.creationTime) {
-            const dateObj = new Date(currentUser.metadata.creationTime);
-            setCreatedAtStr(
-              dateObj.toLocaleDateString("en-ZA", {
-                year: "numeric",
-                month: "short",
-                day: "numeric",
-              })
-            );
-          }
+        if (data.employeeId) {
+          setEmployeeId(data.employeeId);
+        }
+
+        if (data.email) {
+          setEmail(data.email);
+        }
+
+        if (data.photoURL || data.avatarUrl) {
+          const remoteUrl = data.photoURL || data.avatarUrl;
+          setPhotoURL(remoteUrl);
+          localStorage.setItem(`ww_profile_avatar_${uid}`, remoteUrl);
+        }
+
+        // Account creation date calculation
+        let createdDate: Date | null = null;
+        if (data.createdAt?.toDate) {
+          createdDate = data.createdAt.toDate();
+        } else if (data.createdAt) {
+          createdDate = new Date(data.createdAt);
+        } else if (currentUser?.metadata?.creationTime) {
+          createdDate = new Date(currentUser.metadata.creationTime);
+        }
+
+        if (createdDate && !isNaN(createdDate.getTime())) {
+          setCreatedAtStr(
+            createdDate.toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          );
         }
       },
       (err) => {
-        console.warn("Firestore staff profile sync error:", err);
+        console.warn("Profile snapshot error:", err);
       }
     );
 
     return () => unsub();
-  }, [uid, currentUser]);
+  }, [uid, currentUser?.metadata?.creationTime]);
 
-  const handleStartEditing = () => {
+  // ─── Real-time Completed Appointments Subscription ────────────────────────
+  useEffect(() => {
+    if (!uid) return;
+
+    const unsub = subscribeToStaffAppointments(uid, (appointments: StoredAppointment[]) => {
+      const completed = appointments.filter((app) => app.completed || app.status === "Completed");
+      setCompletedWashesCount(completed.length);
+    });
+
+    return () => unsub();
+  }, [uid]);
+
+  // ─── Real-time Published Reviews Subscription ──────────────────────────────
+  useEffect(() => {
+    if (!uid) return;
+
+    const unsub = subscribeToStaffReviews(uid, (reviewsList: CustomerReview[]) => {
+      setStaffReviews(reviewsList);
+      setStats(calculateStaffReviewStats(reviewsList));
+    });
+
+    return () => unsub();
+  }, [uid]);
+
+  // ─── Validation Helpers ────────────────────────────────────────────────────
+  const validateForm = () => {
+    const errs: { name?: string; phone?: string } = {};
+    if (!editName.trim()) {
+      errs.name = "Full name is required.";
+    } else if (editName.trim().length < 2) {
+      errs.name = "Full name must be at least 2 characters.";
+    }
+
+    if (editPhone.trim()) {
+      const cleanPhone = editPhone.trim();
+      const phoneRegex = /^[\d\s+\-()]{7,20}$/;
+      if (!phoneRegex.test(cleanPhone)) {
+        errs.phone = "Please enter a valid phone number.";
+      }
+    }
+
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  // ─── Handle Profile Edit Save ──────────────────────────────────────────────
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateForm() || !uid) return;
+
+    setIsSaving(true);
+    try {
+      const trimmedName = editName.trim();
+      const trimmedPhone = editPhone.trim();
+
+      // 1. Update Firebase Auth Profile
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, {
+          displayName: trimmedName,
+        });
+      }
+
+      // 2. Persist to Firestore user document
+      const userDocRef = doc(db, "users", uid);
+      await setDoc(
+        userDocRef,
+        {
+          fullName: trimmedName,
+          name: trimmedName,
+          displayName: trimmedName,
+          phoneNumber: trimmedPhone,
+          phone: trimmedPhone,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      // 3. Cache in localStorage for immediate sync across tabs
+      localStorage.setItem(`ww_profile_name_${uid}`, trimmedName);
+      localStorage.setItem(`ww_profile_phone_${uid}`, trimmedPhone);
+
+      // 4. Update local state
+      setDisplayName(trimmedName);
+      setPhone(trimmedPhone);
+      setIsEditing(false);
+
+      // 5. Refresh AuthContext so sidebar/header update immediately
+      await refreshUser();
+
+      showToast("Profile details updated successfully!", "success");
+    } catch (err: unknown) {
+      console.error("Failed to update profile:", err);
+      const errMsg = err instanceof Error ? err.message : "Failed to save profile changes.";
+      showToast(errMsg, "error");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditName(displayName);
+    setEditPhone(phone);
+    setErrors({});
+    setIsEditing(false);
+  };
+
+  const handleStartEdit = () => {
     setEditName(displayName);
     setEditPhone(phone);
     setErrors({});
     setIsEditing(true);
   };
 
-  // ─── Real-time Appointments Sync for Completed Washes Count ───────────────
-  useEffect(() => {
-    if (authLoading || !uid) return;
-
-    const unsub = subscribeToStaffAppointments(
-      uid,
-      (list: StoredAppointment[]) => {
-        const completed = list.filter(
-          (a) => a.completed === true || a.status === "Completed"
-        );
-        setCompletedWashesCount(completed.length);
-      },
-      (err) => {
-        console.warn("Error fetching staff appointments for profile:", err);
-      }
-    );
-
-    return () => unsub();
-  }, [uid, authLoading]);
-
-  // ─── Real-time Reviews Sync for Staff Review Stats ────────────────────────
-  useEffect(() => {
-    if (authLoading || !uid) return;
-
-    const unsub = subscribeToStaffReviews(
-      uid,
-      (reviews: CustomerReview[]) => {
-        setStaffReviews(reviews);
-        setStats(calculateStaffReviewStats(reviews));
-      },
-      (err) => {
-        console.warn("Error fetching staff reviews for profile:", err);
-      }
-    );
-
-    return () => unsub();
-  }, [uid, authLoading]);
-
-  // ─── Photo Upload Handler ─────────────────────────────────────────────────
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ─── Handle Cloudinary Avatar Upload ───────────────────────────────────────
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !auth.currentUser) return;
+    if (!file || !uid) return;
 
-    const problem = validateProfileImage(file);
-    if (problem) {
-      showToast(problem, "error");
+    const validationError = validateProfileImage(file);
+    if (validationError) {
+      showToast(validationError, "error");
       return;
     }
 
     setIsUploadingPhoto(true);
     try {
-      const url = await uploadProfileImage(file);
-      await saveProfilePhotoUrl(auth.currentUser, url);
-      setPhotoURL(url);
-      if (uid) {
-        localStorage.setItem(`ww_profile_avatar_${uid}`, url);
+      // 1. Upload to Cloudinary using existing utility
+      const secureUrl = await uploadProfileImage(file);
+
+      // 2. Save URL persistently in Firebase Auth and Firestore
+      if (auth.currentUser) {
+        await saveProfilePhotoUrl(auth.currentUser, secureUrl);
       }
-      refreshUser();
+
+      // 3. Update localStorage and local state
+      localStorage.setItem(`ww_profile_avatar_${uid}`, secureUrl);
+      setPhotoURL(secureUrl);
+
+      // 4. Refresh AuthContext so sidebar reflects new photo
+      await refreshUser();
+
       showToast("Profile photo updated successfully!", "success");
     } catch (err: unknown) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to update profile photo.",
-        "error"
-      );
+      console.error("Avatar upload failed:", err);
+      const msg = err instanceof Error ? err.message : "Failed to upload photo. Please try again.";
+      showToast(msg, "error");
     } finally {
       setIsUploadingPhoto(false);
-    }
-  };
-
-  // ─── Save Profile Details Handler ─────────────────────────────────────────
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const newErrors: { name?: string; phone?: string } = {};
-
-    const trimmedName = editName.trim();
-    const trimmedPhone = editPhone.trim();
-
-    if (!trimmedName) {
-      newErrors.name = "Full name is required.";
-    } else if (trimmedName.length < 2) {
-      newErrors.name = "Full name must be at least 2 characters.";
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      if (uid && auth.currentUser) {
-        // 1. Update Firebase Auth displayName
-        await updateProfile(auth.currentUser, { displayName: trimmedName });
-
-        // 2. Update Firestore user document persistently
-        const userDocRef = doc(db, "users", uid);
-        await setDoc(
-          userDocRef,
-          {
-            displayName: trimmedName,
-            fullName: trimmedName,
-            phone: trimmedPhone,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        // 3. Cache in localStorage so changes immediately persist across refresh and tabs
-        localStorage.setItem(`ww_profile_name_${uid}`, trimmedName);
-        localStorage.setItem(`ww_profile_phone_${uid}`, trimmedPhone);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
       }
-
-      setDisplayName(trimmedName);
-      setPhone(trimmedPhone);
-      refreshUser();
-      window.dispatchEvent(new Event("storage"));
-      showToast("Profile details updated successfully!", "success");
-      setIsEditing(false);
-    } catch (err: unknown) {
-      console.error("Failed to update staff profile:", err);
-      showToast("Could not save profile changes. Please try again.", "error");
-    } finally {
-      setIsSaving(false);
     }
   };
 
-  // ─── Initials Fallback ────────────────────────────────────────────────────
-  const getInitials = (name: string): string => {
-    if (!name) return "ST";
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 1) {
-      return parts[0].substring(0, 2).toUpperCase();
-    }
+  // Fallback Initials
+  const getInitials = (nameStr: string) => {
+    if (!nameStr) return "ST";
+    const parts = nameStr.trim().split(" ");
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  const formattedAvatarUrl = avatarUrl(photoURL, 180);
+  // Up to 3 recent reviews
   const recentReviews = staffReviews.slice(0, 3);
 
   return (
-    <div className="w-full flex flex-col gap-6 pb-12">
-      {/* ─── 1. Profile Header / Summary Card ─────────────────────────────── */}
-      <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-8 relative overflow-hidden shadow-xl">
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#FFA26B] to-[#E86A33]" />
+    <div className="space-y-8 animate-fadeIn">
+      {/* ─── 1. Profile Header & Summary Card ─────────────────────────────── */}
+      <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+        {/* Subtle orange accent gradient */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#E86A33] via-[#FF8055] to-[#E86A33]" />
 
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 relative z-10">
-          {/* Avatar with Initials Fallback and Upload Button */}
-          <div className="relative group shrink-0">
-            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 border-[#2C2C2C] bg-[#1F1F1F] flex items-center justify-center shadow-lg relative">
-              {formattedAvatarUrl ? (
-                <img
-                  src={formattedAvatarUrl}
-                  alt={displayName}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-[#E86A33]/20 via-[#1F1F1F] to-[#101010] flex items-center justify-center">
-                  <span className="text-2xl sm:text-3xl font-black font-display text-[#E86A33] tracking-wider">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
+            {/* Avatar with Initials Fallback & Cloudinary Upload */}
+            <div className="relative group shrink-0">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 border-[#E86A33]/40 bg-[#101010] flex items-center justify-center shadow-lg relative">
+                {photoURL ? (
+                  <img
+                    src={avatarUrl(photoURL, 180)}
+                    alt={displayName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-3xl font-extrabold text-[#E86A33] tracking-wider select-none font-display">
                     {getInitials(displayName)}
                   </span>
-                </div>
-              )}
+                )}
 
-              {isUploadingPhoto && (
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                  <div className="w-6 h-6 border-2 border-[#E86A33] border-t-transparent rounded-full animate-spin" />
-                </div>
-              )}
-            </div>
-
-            {/* Hidden file input */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept="image/jpeg,image/png,image/webp"
-              onChange={handlePhotoUpload}
-              className="hidden"
-            />
-
-            {/* Camera action pill */}
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploadingPhoto}
-              className="absolute -bottom-2 -right-2 p-2 rounded-xl bg-[#E86A33] hover:bg-[#CC5A2A] text-white shadow-md transition-all transform hover:scale-110 active:scale-95 cursor-pointer disabled:opacity-50"
-              title="Upload new profile picture"
-              aria-label="Upload profile picture"
-            >
-              <Camera className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Identity & Status */}
-          <div className="flex-1 text-center sm:text-left min-w-0">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mb-1.5">
-                  <h1 className="text-2xl sm:text-3xl font-black font-display text-[#F5F5F5] tracking-tight truncate">
-                    {displayName}
-                  </h1>
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#E86A33]/15 text-[#E86A33] border border-[#E86A33]/30">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    Staff Member
-                  </span>
-                </div>
-                <p className="text-xs text-[#A1A1AA] flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-1">
-                  <span>WashWizzy Certified Specialist</span>
-                  {createdAtStr && (
-                    <>
-                      <span>•</span>
-                      <span className="flex items-center gap-1 text-[#71717A]">
-                        <Calendar className="w-3.5 h-3.5" />
-                        Joined {createdAtStr}
-                      </span>
-                    </>
-                  )}
-                </p>
-              </div>
-
-              {!isEditing && (
+                {/* Upload Overlay */}
                 <button
                   type="button"
-                  onClick={handleStartEditing}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-[#1F1F1F] hover:bg-[#2C2C2C] text-[#F5F5F5] border border-[#2C2C2C] hover:border-[#3C3C3C] transition-all cursor-pointer shrink-0"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingPhoto}
+                  className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 cursor-pointer disabled:cursor-not-allowed"
+                  title="Upload profile photo"
                 >
-                  <Edit2 className="w-3.5 h-3.5 text-[#E86A33]" />
-                  Edit Profile
+                  <Camera className="w-6 h-6 text-white" />
+                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+                    {isUploadingPhoto ? "Uploading..." : "Change"}
+                  </span>
                 </button>
-              )}
+              </div>
+
+              {/* Mobile quick button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingPhoto}
+                className="absolute -bottom-1.5 -right-1.5 sm:hidden p-1.5 rounded-full bg-[#E86A33] text-white shadow hover:bg-[#d55925] transition-colors"
+                title="Change Photo"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handlePhotoSelect}
+              />
             </div>
 
-            {/* Quick Badges / Meta Strip */}
-            <div className="mt-4 pt-4 border-t border-[#2C2C2C]/60 flex flex-wrap items-center justify-center sm:justify-start gap-4 text-xs text-[#A1A1AA]">
-              {employeeId && (
-                <div className="flex items-center gap-1.5 bg-[#101010] px-3 py-1.5 rounded-lg border border-[#2C2C2C]">
-                  <span className="text-[#71717A] font-medium">Employee ID:</span>
-                  <span className="text-[#F5F5F5] font-mono font-bold">{employeeId}</span>
+            {/* Profile Info Summary */}
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-2xl sm:text-3xl font-extrabold font-display text-[#F5F5F5] tracking-tight">
+                  {displayName}
+                </h1>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#E86A33]/15 text-[#E86A33] border border-[#E86A33]/30">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Staff
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#A1A1AA]">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[#71717A]">Employee ID:</span>
+                  <span className="font-mono font-semibold text-[#F5F5F5]">
+                    {employeeId || "Pending Verification"}
+                  </span>
                 </div>
-              )}
-              {email && (
-                <div className="flex items-center gap-1.5 bg-[#101010] px-3 py-1.5 rounded-lg border border-[#2C2C2C]">
+                <span>•</span>
+                <div className="flex items-center gap-1.5">
                   <Mail className="w-3.5 h-3.5 text-[#71717A]" />
-                  <span className="text-[#F5F5F5]">{email}</span>
+                  <span>{email || currentUser?.email || "—"}</span>
                 </div>
-              )}
-              {phone ? (
-                <div className="flex items-center gap-1.5 bg-[#101010] px-3 py-1.5 rounded-lg border border-[#2C2C2C]">
-                  <Phone className="w-3.5 h-3.5 text-[#71717A]" />
-                  <span className="text-[#F5F5F5]">{phone}</span>
-                </div>
+                {phone && (
+                  <>
+                    <span>•</span>
+                    <div className="flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-[#71717A]" />
+                      <span>{phone}</span>
+                    </div>
+                  </>
+                )}
+                {createdAtStr && (
+                  <>
+                    <span>•</span>
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-[#71717A]" />
+                      <span>Joined {createdAtStr}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Action button */}
+          {!isEditing && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleStartEdit}
+              className="self-start md:self-center text-xs font-semibold px-4 py-2"
+            >
+              <Edit2 className="w-3.5 h-3.5 mr-2" />
+              Edit Profile
+            </Button>
+          )}
+        </div>
+
+        {/* ─── Profile Edit Form (Toggled via isEditing) ───────────────────── */}
+        {isEditing && (
+          <form
+            onSubmit={handleSaveProfile}
+            className="mt-6 pt-6 border-t border-[#2C2C2C] space-y-5 animate-fadeIn"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Input
+                  label="Full Name *"
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="e.g. John Doe"
+                  error={errors.name}
+                  className={errors.name ? "border-red-500 focus:ring-red-500" : ""}
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Phone Number"
+                  type="tel"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="e.g. +27 82 123 4567"
+                  error={errors.phone}
+                  className={errors.phone ? "border-red-500 focus:ring-red-500" : ""}
+                />
+              </div>
+            </div>
+
+            {/* Read-Only Notice */}
+            <div className="bg-[#101010] border border-[#2C2C2C] rounded-xl p-3 flex items-start gap-2 text-xs text-[#71717A]">
+              <Lock className="w-4 h-4 text-[#71717A] shrink-0 mt-0.5" />
+              <span>
+                Employee ID, email address, and staff role are verified credentials managed by system administrators and cannot be altered directly.
+              </span>
+            </div>
+
+            {/* Save & Cancel Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCancelEdit}
+                disabled={isSaving}
+                className="text-xs px-4 py-2"
+              >
+                <X className="w-3.5 h-3.5 mr-1.5" />
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={isSaving}
+                className="text-xs px-5 py-2 font-semibold"
+              >
+                {isSaving ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                ) : (
+                  <Check className="w-3.5 h-3.5 mr-1.5" />
+                )}
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </div>
+
+      {/* ─── 2. Three Summary Metric Cards ───────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+        {/* Completed Washes */}
+        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-5 shadow-lg flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-[#35B86B]/10 border border-[#35B86B]/20 flex items-center justify-center text-[#35B86B] shrink-0">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+          <div>
+            <span className="text-xs font-medium text-[#A1A1AA] uppercase tracking-wider block">
+              Completed Washes
+            </span>
+            <div className="text-2xl font-black font-display text-[#F5F5F5] mt-0.5">
+              {completedWashesCount}
+            </div>
+            <span className="text-[11px] text-[#71717A]">
+              Assigned washes completed
+            </span>
+          </div>
+        </div>
+
+        {/* Customer Reviews Received */}
+        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-5 shadow-lg flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-[#E86A33]/10 border border-[#E86A33]/20 flex items-center justify-center text-[#E86A33] shrink-0">
+            <MessageSquare className="w-6 h-6" />
+          </div>
+          <div>
+            <span className="text-xs font-medium text-[#A1A1AA] uppercase tracking-wider block">
+              Reviews Received
+            </span>
+            <div className="text-2xl font-black font-display text-[#F5F5F5] mt-0.5">
+              {stats.totalReviews}
+            </div>
+            <span className="text-[11px] text-[#71717A]">
+              {stats.thisMonthCount} received this month
+            </span>
+          </div>
+        </div>
+
+        {/* Average Customer Rating */}
+        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-5 shadow-lg flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-[#F59E0B]/10 border border-[#F59E0B]/20 flex items-center justify-center text-[#F59E0B] shrink-0">
+            <Star className="w-6 h-6 fill-[#F59E0B]" />
+          </div>
+          <div>
+            <span className="text-xs font-medium text-[#A1A1AA] uppercase tracking-wider block">
+              Average Rating
+            </span>
+            <div className="text-2xl font-black font-display text-[#F5F5F5] mt-0.5 flex items-center gap-2">
+              {stats.totalReviews > 0 ? (
+                <>
+                  <span>{stats.averageRatingDisplay}</span>
+                  <span className="text-xs font-normal text-[#71717A]">/ 5.0</span>
+                </>
               ) : (
-                <div className="flex items-center gap-1.5 bg-[#101010] px-3 py-1.5 rounded-lg border border-[#2C2C2C] text-[#71717A] italic">
-                  <Phone className="w-3.5 h-3.5" />
-                  No phone set
-                </div>
+                <span className="text-sm font-semibold text-[#71717A]">No ratings yet</span>
               )}
             </div>
+            <span className="text-[11px] text-[#71717A]">
+              {stats.totalReviews > 0
+                ? `Based on ${stats.totalReviews} review${stats.totalReviews === 1 ? "" : "s"}`
+                : "Awaiting customer reviews"}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* ─── 2. Edit Profile Form (Inline when toggled) ───────────────────── */}
-      {isEditing && (
-        <div className="bg-[#171717] border border-[#E86A33]/40 rounded-2xl p-6 shadow-xl animate-in fade-in duration-200">
-          <div className="flex items-center justify-between border-b border-[#2C2C2C] pb-3 mb-5">
-            <div className="flex items-center gap-2">
-              <Edit2 className="w-4 h-4 text-[#E86A33]" />
-              <h2 className="text-base font-bold font-display text-[#F5F5F5]">
-                Edit Personal Information
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsEditing(false)}
-              className="text-[#71717A] hover:text-[#F5F5F5] p-1 rounded-lg"
-            >
-              <X className="w-4 h-4" />
-            </button>
+      {/* ─── 3. Work Assignment, Crew & Lunch Schedule ───────────────────── */}
+      <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-7 shadow-xl">
+        <div className="flex items-center gap-2.5 border-b border-[#2C2C2C] pb-4 mb-5">
+          <div className="w-8 h-8 rounded-xl bg-[#E86A33]/10 border border-[#E86A33]/20 flex items-center justify-center text-[#E86A33]">
+            <Briefcase className="w-4 h-4" />
           </div>
-
-          <form onSubmit={handleSaveProfile} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Editable Name */}
-              <Input
-                label="Full Name *"
-                type="text"
-                value={editName}
-                onChange={(e) => {
-                  setEditName(e.target.value);
-                  if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }));
-                }}
-                error={errors.name}
-                icon={<User className="w-4 h-4" />}
-                placeholder="Your full registered name"
-              />
-
-              {/* Editable Phone */}
-              <Input
-                label="Phone Number"
-                type="tel"
-                value={editPhone}
-                onChange={(e) => {
-                  setEditPhone(e.target.value);
-                  if (errors.phone) setErrors((prev) => ({ ...prev, phone: undefined }));
-                }}
-                error={errors.phone}
-                icon={<Phone className="w-4 h-4" />}
-                placeholder="e.g. +27 82 123 4567"
-              />
-
-              {/* Read-only Employee ID */}
-              <div className="flex flex-col gap-1.5 w-full">
-                <label className="text-sm font-medium text-[#71717A] ml-1 flex items-center justify-between">
-                  <span>Employee ID</span>
-                  <span className="text-[11px] text-[#71717A] flex items-center gap-1">
-                    <Lock className="w-3 h-3" /> Read-only
-                  </span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    disabled
-                    value={employeeId || "Not assigned"}
-                    className="w-full bg-[#101010]/60 border border-[#2C2C2C] text-[#A1A1AA] rounded-lg px-4 py-3 outline-none cursor-not-allowed font-mono text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Read-only Email */}
-              <div className="flex flex-col gap-1.5 w-full">
-                <label className="text-sm font-medium text-[#71717A] ml-1 flex items-center justify-between">
-                  <span>Email Address</span>
-                  <span className="text-[11px] text-[#71717A] flex items-center gap-1">
-                    <Lock className="w-3 h-3" /> Read-only
-                  </span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    disabled
-                    value={email || currentUser?.email || ""}
-                    className="w-full bg-[#101010]/60 border border-[#2C2C2C] text-[#A1A1AA] rounded-lg px-4 py-3 outline-none cursor-not-allowed text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#2C2C2C]">
-              <button
-                type="button"
-                onClick={() => setIsEditing(false)}
-                disabled={isSaving}
-                className="px-5 py-2.5 rounded-xl text-xs font-semibold text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.04] transition-colors"
-              >
-                Cancel
-              </button>
-              <Button
-                type="submit"
-                variant="primary"
-                isLoading={isSaving}
-                className="px-6 py-2.5 text-xs font-bold uppercase tracking-wider"
-              >
-                <Check className="w-3.5 h-3.5" />
-                Save Changes
-              </Button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* ─── 3. Three Summary Performance Cards ───────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        {/* Card 1: Completed Washes */}
-        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 shadow-lg flex flex-col justify-between hover:border-[#3C3C3C] transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-widest text-[#71717A]">
-              Completed Washes
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-[#35B86B]/10 border border-[#35B86B]/20 flex items-center justify-center text-[#35B86B]">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-4">
-            <div className="text-3xl sm:text-4xl font-black font-display text-[#F5F5F5] tracking-tight">
-              {completedWashesCount}
-            </div>
-            <p className="text-xs text-[#A1A1AA] mt-1 flex items-center gap-1.5">
-              <Car className="w-3.5 h-3.5 text-[#35B86B]" />
-              <span>Jobs assigned & completed</span>
+          <div>
+            <h2 className="text-lg font-bold font-display text-[#F5F5F5]">
+              Work Assignment & Schedule
+            </h2>
+            <p className="text-xs text-[#A1A1AA]">
+              Your role assignment, crew pairing, and daily hours set by management
             </p>
           </div>
         </div>
 
-        {/* Card 2: Reviews Received */}
-        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 shadow-lg flex flex-col justify-between hover:border-[#3C3C3C] transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-widest text-[#71717A]">
-              Customer Reviews
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div className="bg-[#101010] border border-[#2C2C2C] rounded-xl p-4">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#71717A] block mb-1">
+              Work Type
             </span>
-            <div className="w-9 h-9 rounded-xl bg-[#E86A33]/10 border border-[#E86A33]/20 flex items-center justify-center text-[#E86A33]">
-              <MessageSquare className="w-4 h-4" />
-            </div>
+            <span className="text-sm font-semibold text-[#F5F5F5]">
+              {WORK_TYPE_LABELS[day.workType] || "Mobile Crew"}
+            </span>
           </div>
-          <div className="mt-4">
-            <div className="text-3xl sm:text-4xl font-black font-display text-[#F5F5F5] tracking-tight">
-              {stats.totalReviews}
-            </div>
-            <p className="text-xs text-[#35B86B] font-semibold mt-1">
-              +{stats.thisMonthCount} received this month
-            </p>
+
+          <div className="bg-[#101010] border border-[#2C2C2C] rounded-xl p-4">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#71717A] block mb-1">
+              Crew Assignment
+            </span>
+            <span className="text-sm font-semibold text-[#F5F5F5]">
+              {day.crew ? `With ${day.partnerNames.join(" and ")}` : "Working solo"}
+            </span>
+          </div>
+
+          <div className="bg-[#101010] border border-[#2C2C2C] rounded-xl p-4">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#71717A] block mb-1">
+              Lunch Today
+            </span>
+            <span className="text-sm font-semibold text-[#E86A33]">
+              {formatHour(day.lunchToday)}–{formatHour(day.lunchToday + 1)}
+            </span>
           </div>
         </div>
 
-        {/* Card 3: Average Rating */}
-        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 shadow-lg flex flex-col justify-between hover:border-[#3C3C3C] transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-widest text-[#71717A]">
-              Average Rating
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-[#F59E0B]/10 border border-[#F59E0B]/20 flex items-center justify-center text-[#F59E0B]">
-              <Star className="w-4 h-4 fill-[#F59E0B]" />
-            </div>
-          </div>
-          <div className="mt-4">
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl sm:text-4xl font-black font-display text-[#F5F5F5] tracking-tight">
-                {stats.totalReviews > 0 ? stats.averageRatingDisplay : "No ratings yet"}
-              </span>
-              {stats.totalReviews > 0 && (
-                <span className="text-xs text-[#71717A] font-medium">/ 5.0</span>
-              )}
-            </div>
-            {/* Stars visualization */}
-            <div className="flex items-center gap-1 mt-1.5">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Star
-                  key={star}
-                  className={`w-3.5 h-3.5 ${
-                    stats.totalReviews > 0 && star <= Math.round(stats.averageRating)
-                      ? "text-[#E86A33] fill-[#E86A33]"
-                      : "text-[#2C2C2C] fill-transparent"
-                  }`}
-                />
-              ))}
-              <span className="text-[11px] text-[#A1A1AA] ml-1.5 font-medium">
-                {stats.totalReviews > 0
-                  ? `(${stats.totalReviews} ${stats.totalReviews === 1 ? "review" : "reviews"})`
-                  : "Awaiting customer feedback"}
-              </span>
-            </div>
-          </div>
-        </div>
+        <LunchControl day={day} mode="usual" />
       </div>
 
       {/* ─── 4. Recent Reviews Section ───────────────────────────────────── */}
       <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-7 shadow-xl">
-        <div className="flex items-center justify-between border-b border-[#2C2C2C] pb-4 mb-5">
+        <div className="flex items-center justify-between pb-4 border-b border-[#2C2C2C] mb-5">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-[#E86A33]/10 border border-[#E86A33]/20 flex items-center justify-center text-[#E86A33]">
               <Star className="w-4 h-4 fill-[#E86A33]" />
@@ -621,14 +637,14 @@ export default function StaffProfile() {
                 Recent Customer Reviews
               </h2>
               <p className="text-xs text-[#A1A1AA]">
-                Latest verified customer ratings on washes completed by you
+                Verified feedback from completed washes assigned to you
               </p>
             </div>
           </div>
 
           <Link
             to="/dashboard/staff/reviews"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#E86A33] hover:text-[#FF8055] transition-colors group cursor-pointer"
+            className="text-xs font-semibold text-[#E86A33] hover:text-[#FF8055] transition-colors flex items-center gap-1 group"
           >
             <span>View all reviews</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
@@ -636,10 +652,10 @@ export default function StaffProfile() {
         </div>
 
         {recentReviews.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-4">
             {recentReviews.map((rev) => {
-              const revDate = rev.createdAt
-                ? new Date(rev.createdAt).toLocaleDateString("en-ZA", {
+              const reviewDate = rev.createdAt
+                ? new Date(rev.createdAt).toLocaleDateString(undefined, {
                     month: "short",
                     day: "numeric",
                     year: "numeric",
@@ -649,59 +665,70 @@ export default function StaffProfile() {
               return (
                 <div
                   key={rev.id}
-                  className="bg-[#101010] border border-[#2C2C2C] rounded-xl p-4 flex flex-col justify-between hover:border-[#3C3C3C] transition-all"
+                  className="bg-[#101010] border border-[#2C2C2C] rounded-xl p-4 sm:p-5 hover:border-[#E86A33]/30 transition-colors"
                 >
-                  <div>
-                    {/* Top row: Customer Name & Rating */}
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-7 h-7 rounded-full bg-[#2C2C2C] text-[#F5F5F5] font-bold text-[11px] flex items-center justify-center shrink-0">
-                          {getInitials(rev.customerName || "Customer")}
-                        </div>
-                        <span className="text-xs font-semibold text-[#F5F5F5] truncate">
-                          {rev.customerName || "Customer"}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-[#E86A33]/20 text-[#E86A33] font-bold text-xs flex items-center justify-center font-display">
+                        {rev.customerName
+                          ? rev.customerName.substring(0, 2).toUpperCase()
+                          : "CU"}
+                      </div>
+                      <div>
+                        <span className="text-sm font-bold text-[#F5F5F5] block">
+                          {rev.customerName || "Verified Customer"}
+                        </span>
+                        <span className="text-[11px] text-[#71717A] flex items-center gap-1">
+                          <Car className="w-3 h-3" />
+                          {rev.serviceName || "Car Wash Service"}
                         </span>
                       </div>
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        {[1, 2, 3, 4, 5].map((s) => (
+                    </div>
+
+                    <div className="flex items-center gap-3 self-start sm:self-auto">
+                      <div className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map((star) => (
                           <Star
-                            key={s}
-                            className={`w-3 h-3 ${
-                              s <= rev.rating
-                                ? "text-[#E86A33] fill-[#E86A33]"
-                                : "text-[#2C2C2C] fill-transparent"
+                            key={star}
+                            className={`w-3.5 h-3.5 ${
+                              star <= rev.rating
+                                ? "text-[#F59E0B] fill-[#F59E0B]"
+                                : "text-[#3F3F46]"
                             }`}
                           />
                         ))}
                       </div>
+                      <span className="text-[11px] text-[#71717A]">{reviewDate}</span>
                     </div>
-
-                    {/* Service & Date Tag */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-[#71717A] mb-2.5">
-                      <span className="text-[#E86A33] font-medium">{rev.serviceName}</span>
-                      <span>•</span>
-                      <span>{revDate}</span>
-                    </div>
-
-                    {/* Comment */}
-                    <p className="text-xs text-[#D8D5CF] leading-relaxed line-clamp-3">
-                      "{rev.comment}"
-                    </p>
                   </div>
 
-                  {/* Thumbnail previews if any */}
+                  <p className="text-xs text-[#D4D4D4] leading-relaxed italic bg-[#171717]/60 p-3 rounded-lg border border-[#2C2C2C]/50">
+                    "{rev.comment}"
+                  </p>
+
+                  {rev.ownerReply && (
+                    <div className="mt-2.5 text-xs text-[#A1A1AA] border-l-2 border-[#E86A33] pl-3 py-1 bg-[#171717]/40 rounded-r">
+                      <span className="font-semibold text-[#E86A33] block text-[11px]">Owner reply</span>
+                      {rev.ownerReply}
+                    </div>
+                  )}
+
                   {rev.photos && rev.photos.length > 0 && (
-                    <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-[#2C2C2C]/50">
-                      {rev.photos.slice(0, 3).map((photo, pIdx) => (
-                        <img
+                    <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-[#2C2C2C]/40">
+                      {rev.photos.slice(0, 3).map((photoUrl, pIdx) => (
+                        <div
                           key={pIdx}
-                          src={photo}
-                          alt="Review"
-                          className="w-8 h-8 rounded-md object-cover border border-[#2C2C2C]"
-                        />
+                          className="w-12 h-12 rounded-lg overflow-hidden border border-[#2C2C2C] bg-[#101010]"
+                        >
+                          <img
+                            src={photoUrl}
+                            alt={`Review photo ${pIdx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
                       ))}
                       {rev.photos.length > 3 && (
-                        <span className="text-[10px] text-[#71717A] font-bold">
+                        <span className="text-[10px] text-[#71717A]">
                           +{rev.photos.length - 3}
                         </span>
                       )}

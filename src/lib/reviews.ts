@@ -6,9 +6,9 @@ import {
   deleteDoc,
   onSnapshot,
   query,
-  where,
   orderBy,
   serverTimestamp,
+  where,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { recordReviewPoints } from './rewards';
@@ -30,6 +30,10 @@ export interface CustomerReview {
   status: 'Published' | 'Pending Approval' | 'Rejected';
   createdAt: number;
   updatedAt?: number;
+  /** The crew (or solo staff member) who did the job, so they can see the review */
+  staffUids?: string[];
+  hiddenByAdmin?: boolean;
+  ownerReply?: string;
 }
 
 export interface ReviewStats {
@@ -437,8 +441,8 @@ export function subscribeToStaffReviews(
         const list: CustomerReview[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as Partial<CustomerReview>;
-          // Only published reviews belong in staff list & statistics
-          if (data.status === 'Published') {
+          // Only published, non-hidden reviews belong in staff list & statistics
+          if (data.status === 'Published' && !data.hiddenByAdmin) {
             list.push({
               id: docSnap.id,
               customerId: data.customerId || docSnap.ref.parent.parent?.id || '',
@@ -449,6 +453,9 @@ export function subscribeToStaffReviews(
               appointmentDate: data.appointmentDate,
               assignedStaffUid: data.assignedStaffUid || staffUid,
               staffName: data.staffName,
+              staffUids: data.staffUids,
+              hiddenByAdmin: data.hiddenByAdmin,
+              ownerReply: data.ownerReply,
               rating: typeof data.rating === 'number' ? data.rating : 5,
               comment: data.comment || '',
               photos: Array.isArray(data.photos) ? data.photos : [],
