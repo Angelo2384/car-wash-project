@@ -30,8 +30,12 @@ service cloud.firestore {
       // Customers cannot set role to admin on signup; staff can activate their account
       allow create: if (isOwner(userId) && (!('role' in request.resource.data) || request.resource.data.role in ['customer', 'staff'])) || isAdmin();
       
-      // Users cannot elevate their own role to admin; admins can update profiles
-      allow update: if (isOwner(userId) && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role)) || isAdmin();
+      // Users cannot elevate their own role to admin and cannot alter employeeId if it exists; admins can update profiles
+      allow update: if (
+        isOwner(userId) && 
+        (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) &&
+        (!('employeeId' in request.resource.data) || !('employeeId' in resource.data) || request.resource.data.employeeId == resource.data.employeeId)
+      ) || isAdmin();
       allow delete: if isAdmin();
 
       // Specific rule for appointments:
@@ -77,9 +81,50 @@ service cloud.firestore {
         allow delete: if isOwner(userId) || isAdmin();
       }
 
-      // Other subcollections (e.g. vehicles, reviews, paymentMethods, redeemedRewards)
+      // Specific rule for reviews:
+      // Customers can create reviews for their completed appointments or general service
+      // Assigned staff can read published reviews assigned to them
+      match /reviews/{reviewId} {
+        allow read: if isOwner(userId) || isAdmin() || (isAuthenticated() && resource.data.assignedStaffUid == request.auth.uid && resource.data.status == 'Published');
+
+        allow create: if (
+          isOwner(userId) &&
+          request.resource.data.customerId == userId &&
+          (
+            !('appointmentId' in request.resource.data) ||
+            request.resource.data.appointmentId == null ||
+            (
+              exists(/databases/$(database)/documents/users/$(userId)/appointments/$(request.resource.data.appointmentId)) &&
+              (
+                (('completed' in get(/databases/$(database)/documents/users/$(userId)/appointments/$(request.resource.data.appointmentId)).data) &&
+                 get(/databases/$(database)/documents/users/$(userId)/appointments/$(request.resource.data.appointmentId)).data.completed == true) ||
+                (('status' in get(/databases/$(database)/documents/users/$(userId)/appointments/$(request.resource.data.appointmentId)).data) &&
+                 get(/databases/$(database)/documents/users/$(userId)/appointments/$(request.resource.data.appointmentId)).data.status == 'Completed')
+              ) &&
+              (
+                !('assignedStaffUid' in request.resource.data) ||
+                request.resource.data.assignedStaffUid == null ||
+                (('assignedStaffUid' in get(/databases/$(database)/documents/users/$(userId)/appointments/$(request.resource.data.appointmentId)).data) &&
+                 request.resource.data.assignedStaffUid == get(/databases/$(database)/documents/users/$(userId)/appointments/$(request.resource.data.appointmentId)).data.assignedStaffUid)
+              )
+            )
+          )
+        ) || isAdmin();
+
+        allow update: if (
+          isOwner(userId) &&
+          request.resource.data.customerId == resource.data.customerId &&
+          (!('appointmentId' in resource.data) || resource.data.appointmentId == null || ('appointmentId' in request.resource.data && request.resource.data.appointmentId == resource.data.appointmentId)) &&
+          (!('assignedStaffUid' in resource.data) || resource.data.assignedStaffUid == null || ('assignedStaffUid' in request.resource.data && request.resource.data.assignedStaffUid == resource.data.assignedStaffUid)) &&
+          (!('staffName' in resource.data) || resource.data.staffName == null || ('staffName' in request.resource.data && request.resource.data.staffName == resource.data.staffName))
+        ) || isAdmin();
+
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      // Other subcollections (e.g. vehicles, paymentMethods, redeemedRewards)
       match /{subcollection}/{document=**} {
-        allow read, write: if isOwner(userId) && subcollection != 'appointments' && subcollection != 'notifications';
+        allow read, write: if isOwner(userId) && subcollection != 'appointments' && subcollection != 'notifications' && subcollection != 'reviews';
       }
     }
 
@@ -92,7 +137,16 @@ service cloud.firestore {
                       (isAuthenticated() && resource.data.assignedStaffUid == request.auth.uid && resource.data.status != 'Cancelled');
     }
 
-    // 6. Rule for staff registration 
+    // 6. Collection group rule for reviews (used by admin, customer, and staff dashboards)
+    match /{path=**}/reviews/{reviewId} {
+      allow read: if isAdmin() || 
+                     (isAuthenticated() && resource.data.customerId == request.auth.uid) || 
+                     (isAuthenticated() && resource.data.assignedStaffUid == request.auth.uid && resource.data.status == 'Published');
+      allow write: if isAdmin() || 
+                      (isAuthenticated() && resource.data.customerId == request.auth.uid);
+    }
+
+    // 7. Rule for staff registration 
     match /pre_registered_staff/{document=**} {
       // Anyone can read this to verify their email during signup
       allow read: if true;
@@ -100,17 +154,16 @@ service cloud.firestore {
       allow write: if false; 
     }
 
-    // 7. Rule for settings
+    // 8. Rule for settings
     match /settings/{document=**} {
       allow read: if true; // Allowed so staff can read access codes during signup
       allow write: if false;
     }
 
-    // 8. Default fallback to lock down anything else not explicitly allowed above
+    // 9. Default fallback to lock down anything else not explicitly allowed above
     match /{document=**} {
       allow read, write: if false;
     }
     
   }
 }
-
