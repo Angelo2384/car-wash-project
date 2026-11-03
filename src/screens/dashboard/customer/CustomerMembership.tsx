@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { formatRand } from "../../../lib/business";
+import { useBusinessSettings } from "../../../hooks/useOperations";
 import { useNavigate } from "react-router-dom";
 import {
   Crown,
@@ -26,6 +28,11 @@ import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 
 export default function CustomerMembership() {
+  // Prices come from the admin's Fees settings
+  const business = useBusinessSettings();
+  const monthlyFmt = `R${business.membershipMonthly.toFixed(2)}`;
+  const annualFmt = `R${business.membershipAnnual.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+  const annualSaving = business.membershipMonthly * 12 - business.membershipAnnual;
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { showToast } = useToast();
@@ -151,7 +158,7 @@ export default function CustomerMembership() {
         setIsPaying(false);
         setIsCheckoutOpen(false);
 
-        const feeStr = billingCycle === "monthly" ? "R199.00" : "R1,899.00";
+        const feeStr = billingCycle === "monthly" ? monthlyFmt : annualFmt;
         const refCode = `WW-${Math.floor(100000 + Math.random() * 900000)}`;
         
         addNotification({
@@ -196,7 +203,7 @@ export default function CustomerMembership() {
         setIsCheckoutOpen(false);
         showToast("Diamond Elite Membership activated successfully!", "success");
 
-        const fallbackFee = billingCycle === "monthly" ? "R199.00" : "R1,899.00";
+        const fallbackFee = billingCycle === "monthly" ? monthlyFmt : annualFmt;
         setPaymentSuccessInfo({
           itemName: 'Diamond Elite Membership',
           amount: fallbackFee,
@@ -245,126 +252,16 @@ export default function CustomerMembership() {
     }
   };
 
-  const priceFormatted = billingCycle === "monthly" ? "R199.00" : "R1,899.00";
+  const priceFormatted = billingCycle === "monthly" ? monthlyFmt : annualFmt;
   const pricePeriod = billingCycle === "monthly" ? "/ month" : "/ year";
 
   return (
     <div className="flex flex-col gap-10 pb-16 text-[#F5F5F5] animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-forwards">
-      {/* ─── UNIQUE DARK GEOMETRIC BACKGROUND PATTERN ─── */}
-      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden" style={{ top: 64, left: 240 }}>
-        {/* Deep background color layer */}
-        <div className="absolute inset-0 bg-[#101010]" />
-
-        {/* Ambient Warm Brown/Black Gradient Meshes */}
-        <div
-          className="absolute -top-[10%] left-1/2 -translate-x-1/2 w-[1200px] h-[600px] rounded-full opacity-30 blur-[130px] pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(ellipse at center, rgba(232,106,51,0.18) 0%, rgba(44,24,16,0.2) 45%, transparent 70%)",
-          }}
-        />
-        <div
-          className="absolute top-[45%] -right-[15%] w-[800px] h-[800px] rounded-full opacity-20 blur-[140px] pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(53,184,107,0.15) 0%, rgba(20,35,25,0.25) 50%, transparent 75%)",
-          }}
-        />
-        <div
-          className="absolute bottom-0 -left-[10%] w-[700px] h-[700px] rounded-full opacity-25 blur-[120px] pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(232,106,51,0.12) 0%, rgba(30,18,12,0.3) 50%, transparent 70%)",
-          }}
-        />
-
-        {/* Layered Geometric Angular Polygons and Grid Lines */}
-        <svg
-          className="absolute inset-0 w-full h-full opacity-[0.07] stroke-[#E86A33]"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <defs>
-            <pattern
-              id="membership-geo-grid"
-              width="120"
-              height="120"
-              patternUnits="userSpaceOnUse"
-              patternTransform="rotate(25)"
-            >
-              {/* Angular geometric grid */}
-              <path
-                d="M 120 0 L 0 120 M 0 0 L 120 120 M 60 0 L 120 60 L 60 120 L 0 60 Z"
-                fill="none"
-                strokeWidth="1.2"
-              />
-              <circle cx="60" cy="60" r="2.5" fill="#E86A33" />
-            </pattern>
-            <linearGradient id="glow-line-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#E86A33" stopOpacity="0.4" />
-              <stop offset="50%" stopColor="#35B86B" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#E86A33" stopOpacity="0.1" />
-            </linearGradient>
-          </defs>
-
-          {/* Grid pattern fill */}
-          <rect width="100%" height="100%" fill="url(#membership-geo-grid)" />
-
-          {/* High-tech accent laser vectors */}
-          <line
-            x1="0"
-            y1="15%"
-            x2="100%"
-            y2="35%"
-            stroke="url(#glow-line-grad)"
-            strokeWidth="1.5"
-            strokeDasharray="16 8"
-          />
-          <line
-            x1="10%"
-            y1="60%"
-            x2="90%"
-            y2="85%"
-            stroke="url(#glow-line-grad)"
-            strokeWidth="1.5"
-            strokeDasharray="24 12"
-          />
-        </svg>
-
-        {/* Diagonal faceted gradient accents */}
-        <div
-          className="absolute inset-0 opacity-[0.035] pointer-events-none"
-          style={{
-            backgroundImage: `linear-gradient(135deg, #E86A33 25%, transparent 25%), 
-                              linear-gradient(225deg, #E86A33 25%, transparent 25%), 
-                              linear-gradient(45deg, #35B86B 25%, transparent 25%), 
-                              linear-gradient(315deg, #35B86B 25%, #101010 25%)`,
-            backgroundPosition: "40px 0, 40px 0, 0 0, 0 0",
-            backgroundSize: "80px 80px",
-            backgroundRepeat: "repeat",
-          }}
-        />
-      </div>
-
       {/* ─── HERO SECTION: "WASH MORE. SAVE MORE." ─── */}
-      <div className="relative bg-[#171717] border border-[#2C2C2C] rounded-2xl overflow-hidden shadow-2xl">
+      <div className="relative bg-[#171717] border border-[#2C2C2C] rounded-2xl overflow-hidden">
         {/* Top ambient orange glow bar */}
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#FF8542] to-transparent z-20" />
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent z-20" />
 
-        {/* Ambient radial glows */}
-        <div
-          className="absolute top-0 right-0 w-[550px] h-[550px] pointer-events-none rounded-full z-0"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(232,106,51,0.12) 0%, rgba(44,24,16,0.08) 45%, transparent 70%)",
-          }}
-        />
-        <div
-          className="absolute -bottom-10 left-10 w-[300px] h-[300px] pointer-events-none rounded-full z-0"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(53,184,107,0.08) 0%, transparent 65%)",
-          }}
-        />
 
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center p-6 sm:p-8 lg:p-10">
           {/* Left Text Content */}
@@ -378,12 +275,12 @@ export default function CustomerMembership() {
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-black font-display tracking-tight leading-[1.08] text-[#F5F5F5]">
                 WASH MORE.
                 <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#E86A33] via-[#FF8042] to-[#FFA26B]">
+                <span className="text-[#E86A33]">
                   SAVE MORE.
                 </span>
               </h2>
               <p className="text-[#A1A1AA] text-sm sm:text-base mt-4 leading-relaxed max-w-xl">
-                Join the WashWizzy Membership for the ultimate convenience. Members receive complimentary house calls, priority booking slots, and flexible 1-hour rescheduling.
+                Join the WashWizzy Membership for the ultimate convenience. Members receive complimentary house calls, priority booking slots, and flexible rescheduling up to 2 hours before.
               </p>
             </div>
 
@@ -406,7 +303,7 @@ export default function CustomerMembership() {
                 variant="primary"
                 onClick={hasMembership ? handleCancelMembership : handleOpenCheckout}
                 disabled={isProcessing}
-                className="py-3 px-7 text-sm font-semibold shadow-lg shadow-[#E86A33]/25"
+                className="py-3 px-7 text-sm font-semibold"
               >
                 <Crown className="w-4 h-4" />
                 {hasMembership ? "Manage Active Membership" : "Upgrade to Diamond Elite"}
@@ -426,7 +323,7 @@ export default function CustomerMembership() {
           {/* Right Visual Image */}
           <div className="lg:col-span-5 relative flex items-center justify-center">
             {/* Angled Backdrop Card */}
-            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border border-[#2C2C2C] bg-[#101010] shadow-2xl group">
+            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border border-[#2C2C2C] bg-[#101010] group">
               <img
                 src="/images/member.png"
                 alt="WashWizzy Premium Mobile Detailing Rig"
@@ -568,18 +465,10 @@ export default function CustomerMembership() {
           </div>
 
           {/* Card 2: Membership (HIGHLIGHTED AS BEST VALUE) */}
-          <div className="bg-[#171717] border-2 border-[#E86A33] rounded-2xl p-6 sm:p-8 flex flex-col justify-between shadow-2xl relative overflow-hidden transition-all hover:shadow-[0_0_40px_rgba(232,106,51,0.18)]">
+          <div className="bg-[#171717] border-2 border-[#E86A33] rounded-2xl p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden">
             {/* Top Ambient Glow Line */}
-            <div className="absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r from-[#E86A33] via-[#FFA26B] to-[#E86A33]" />
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
 
-            {/* Ambient Corner Glow */}
-            <div
-              className="absolute -top-10 -right-10 w-48 h-48 pointer-events-none rounded-full"
-              style={{
-                background:
-                  "radial-gradient(circle, rgba(232,106,51,0.2) 0%, transparent 70%)",
-              }}
-            />
 
             <div className="flex flex-col gap-6 relative z-10">
               {/* Header with Best Value Badge */}
@@ -600,7 +489,7 @@ export default function CustomerMembership() {
                 </div>
 
                 {/* BEST VALUE BADGE */}
-                <span className="px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-gradient-to-r from-[#E86A33] to-[#FF8042] text-white shadow-md shadow-[#E86A33]/30 border border-[#FFA26B]/40 flex items-center gap-1 animate-pulse">
+                <span className="px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-[#E86A33] text-white flex items-center gap-1">
                   <Crown className="w-3.5 h-3.5" />
                   Best Value
                 </span>
@@ -610,17 +499,17 @@ export default function CustomerMembership() {
               <div className="pb-4 border-b border-[#2C2C2C]">
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-4xl sm:text-5xl font-black font-display text-[#F5F5F5] tracking-tight">
-                    {billingCycle === "monthly" ? "R199" : "R1,899"}
+                    {billingCycle === "monthly" ? formatRand(business.membershipMonthly) : formatRand(business.membershipAnnual)}
                   </span>
                   <span className="text-xs text-[#A1A1AA] font-medium">
-                    {billingCycle === "monthly" ? "/ month" : "/ year (save R489)"}
+                    {billingCycle === "monthly" ? "/ month" : annualSaving > 0 ? `/ year (save ${formatRand(annualSaving)})` : "/ year"}
                   </span>
                 </div>
                 <p className="text-[11px] text-[#35B86B] font-semibold mt-1 flex items-center gap-1">
                   <Check className="w-3.5 h-3.5" />
                   {billingCycle === "monthly"
                     ? "Cancel anytime with no lock-in contracts"
-                    : "Best savings: Equivalent to R158/month"}
+                    : `Best savings: Equivalent to ${formatRand(Math.round(business.membershipAnnual / 12))}/month`}
                 </p>
               </div>
 
@@ -648,7 +537,7 @@ export default function CustomerMembership() {
 
                 <div className="flex items-center gap-3 text-[#F5F5F5] font-medium">
                   <CheckCircle2 className="w-4 h-4 text-[#E86A33] shrink-0" />
-                  <span>Reschedule up to 1 hour before your appointment.</span>
+                  <span>Reschedule up to 2 hours before your appointment.</span>
                 </div>
               </div>
             </div>
@@ -660,14 +549,14 @@ export default function CustomerMembership() {
                 fullWidth
                 disabled={isProcessing}
                 onClick={hasMembership ? handleCancelMembership : handleOpenCheckout}
-                className="py-3.5 text-sm sm:text-base font-bold shadow-xl shadow-[#E86A33]/30 flex items-center justify-center gap-2"
+                className="py-3.5 text-sm sm:text-base font-bold flex items-center justify-center gap-2"
               >
                 <Crown className="w-4 h-4" />
                 {hasMembership
                   ? "Membership Active • Click to Cancel"
                   : billingCycle === "monthly"
-                  ? "Upgrade to Membership (R199/mo)"
-                  : "Upgrade to Annual Membership (R1,899/yr)"}
+                  ? `Upgrade to Membership (${formatRand(business.membershipMonthly)}/mo)`
+                  : `Upgrade to Annual Membership (${formatRand(business.membershipAnnual)}/yr)`}
               </Button>
             </div>
           </div>
@@ -703,9 +592,9 @@ export default function CustomerMembership() {
       {/* ─── CHECKOUT / PAYMENT POP-UP MODAL ─── */}
       {isCheckoutOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative w-full max-w-lg bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-8 flex flex-col gap-6 overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="relative w-full max-w-lg bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-8 flex flex-col gap-6 overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Ambient Orange Top Border Line */}
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#FFA26B] to-[#E86A33]" />
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
 
             {/* Header */}
             <div className="flex items-start justify-between">
@@ -833,7 +722,7 @@ export default function CustomerMembership() {
                   variant="primary"
                   isLoading={isPaying}
                   disabled={isPaying}
-                  className="flex-[2] py-3 text-xs sm:text-sm font-bold shadow-lg shadow-[#E86A33]/25 flex items-center justify-center gap-2"
+                  className="flex-[2] py-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-2"
                 >
                   <Lock className="w-4 h-4" />
                   Pay Now ({priceFormatted})

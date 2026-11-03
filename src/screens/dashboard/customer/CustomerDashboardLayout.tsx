@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -7,7 +7,7 @@ import {
   Star,
   Bell,
   Crown,
-  LogOut,
+  Menu,
   MessageSquare,
   Info,
   LifeBuoy,
@@ -20,9 +20,11 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../../../lib/firebase";
 import { avatarUrl } from "../../../lib/cloudinary";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useCustomerJobNotifications } from "../../../hooks/useCustomerJobNotifications";
 import { useTheme } from "../../../contexts/ThemeContext";
 import ThemeToggle from "../../../components/ui/ThemeToggle";
 import ProfileChip from "../../../components/ui/ProfileChip";
+import DashboardSidebar from "../../../components/dashboard/DashboardSidebar";
 import Tooltip from "../../../components/ui/Tooltip";
 import PageHeading from "../../../components/ui/PageHeading";
 import { DASHBOARD_BAR_HEIGHT, findPageHeading, type PageHeadingDef } from "../../../lib/pageHeadings";
@@ -166,6 +168,8 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { unreadCount } = useNotifications();
+  useCustomerJobNotifications(currentUser?.uid);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Bell dropdown state
   const [bellOpen, setBellOpen] = useState(false);
@@ -265,6 +269,7 @@ export default function DashboardLayout() {
       name: "Dashboard",
       path: "/dashboard/customer",
       icon: <LayoutDashboard className="w-4 h-4" />,
+      exact: true,
     },
     {
       name: "My Appointments",
@@ -293,90 +298,32 @@ export default function DashboardLayout() {
   const isProfileActive = location.pathname === "/dashboard/customer/profile";
 
   return (
-    <div className={theme}>
+    <div className={theme} data-dashboard-root>
       <div className="min-h-screen bg-[#101010] font-sans flex text-[#F5F5F5] transition-colors duration-300 selection:bg-[#E86A33] selection:text-white relative">
-        {/* Atmospheric Dark-Mode Effect */}
-        <div
-          className="absolute inset-0 pointer-events-none z-0"
-          style={{
-            background:
-              "radial-gradient(circle at 80% 0%, rgba(232,106,51,0.035), transparent 35%)",
-          }}
-        ></div>
 
-        {/* Sidebar */}
-        <aside className="w-[240px] bg-[#171717] border-r border-[#2C2C2C] fixed inset-y-0 left-0 flex flex-col z-20">
-          {/* Logo */}
-          <div className={`${DASHBOARD_BAR_HEIGHT} flex items-center px-6 border-b border-[#2C2C2C]`}>
-            <Link to="/dashboard/customer" className="flex items-center group">
-              <img
-                src={theme === "light" ? "/images/logo-light.png" : "/images/logo.png"}
-                alt="WashWizzy"
-                className="w-28 h-auto object-contain"
-              />
-            </Link>
-          </div>
-
-          {/* Navigation */}
-          <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.name}
-                  to={item.path}
-                  className={`flex items-center gap-3.5 px-[16px] py-[11px] min-h-[46px] rounded-lg transition-all font-medium text-[14px] ${
-                    isActive
-                      ? "bg-[rgba(232,106,51,0.10)] text-[#E86A33]"
-                      : "text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#F5F5F5]"
-                  }`}
-                >
-                  <div className="[&>svg]:w-[18px] [&>svg]:h-[18px]">
-                    {item.icon}
-                  </div>
-                  {item.name}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Support links + Log Out (the profile is reached from the avatar in the top bar) */}
-          <div className="px-4 py-3 border-t border-[#2C2C2C] mt-auto space-y-0.5">
-            {supportItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.name}
-                  to={item.path}
-                  aria-current={isActive ? "page" : undefined}
-                  className={`flex items-center gap-3 px-[16px] py-2 min-h-[40px] rounded-lg transition-all font-medium text-[13px] ${
-                    isActive
-                      ? "bg-[rgba(232,106,51,0.10)] text-[#E86A33]"
-                      : "text-[#71717A] hover:bg-white/[0.04] hover:text-[#F5F5F5]"
-                  }`}
-                >
-                  <div className="[&>svg]:w-4 [&>svg]:h-4">{item.icon}</div>
-                  {item.name}
-                </Link>
-              );
-            })}
-            <button
-              onClick={() => setIsLogoutModalOpen(true)}
-              className="w-full flex items-center gap-3 px-[16px] py-2 min-h-[40px] rounded-lg transition-all font-medium text-[13px] text-[#71717A] hover:bg-white/[0.04] hover:text-[#F5F5F5] cursor-pointer"
-            >
-              <div className="[&>svg]:w-4 [&>svg]:h-4">
-                <LogOut className="w-4 h-4" />
-              </div>
-              Log Out
-            </button>
-          </div>
-        </aside>
+        <DashboardSidebar
+          homePath="/dashboard/customer"
+          items={navItems}
+          footerItems={supportItems}
+          onLogout={() => setIsLogoutModalOpen(true)}
+          mobileOpen={mobileMenuOpen}
+          onMobileClose={() => setMobileMenuOpen(false)}
+        />
 
         {/* Main Content Area */}
-        <main className="flex-1 ml-[240px] flex flex-col min-h-screen relative z-10">
+        <main className="flex-1 lg:ml-[240px] flex flex-col min-h-screen relative z-10 min-w-0">
           {/* Top Bar */}
-          <header className={`${DASHBOARD_BAR_HEIGHT} bg-[#101010]/80 backdrop-blur-md shadow-md border-b border-[#2C2C2C] sticky top-0 z-30 px-8 flex items-center justify-between`}>
-            <PageHeading heading={pageHeading} />
+          <header className={`${DASHBOARD_BAR_HEIGHT} bg-[#101010]/80 backdrop-blur-md shadow-md border-b border-[#2C2C2C] sticky top-0 z-20 px-4 sm:px-8 flex items-center justify-between`}>
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                className="p-2 -ml-2 rounded-lg text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.04] lg:hidden cursor-pointer"
+                aria-label="Open menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <PageHeading heading={pageHeading} />
+            </div>
 
             <div className="flex items-center gap-3">
               {hasMembership ? (

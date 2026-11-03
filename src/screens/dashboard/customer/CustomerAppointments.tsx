@@ -21,7 +21,7 @@ const DEFAULT_MOCK_APPOINTMENTS: StoredAppointment[] = [
     price: 'R120.00',
     packageName: 'Premium Detail',
     staffName: 'Michael R.',
-    staffStatus: 'On Route - 15 mins away',
+    staffStatus: 'On Route',
     isLocked: true,
     completed: false,
     createdAt: Date.now() - 3600000,
@@ -449,9 +449,21 @@ function AppointmentCard({
   const canReschedule = dynamic.canReschedule;
   const isRescheduleDisabled = isLocked || !canReschedule;
   const cancellationPolicy = dynamic.cancellationPolicy;
-  const computedStaffStatus = isLocked && status === 'Staff on route' && (!staffStatus || staffStatus === 'Assigned' || staffStatus === 'Finding Staff...')
-    ? 'On Route - 15 mins away'
-    : staffStatus;
+  // What the crew last tapped on their dashboard, in plain words (no guessed arrival times)
+  const STAFF_STEP_TEXT: Record<string, string> = {
+    'on route': 'On the way',
+    arrived: 'Arrived',
+    washing: 'Washing your car',
+    completed: 'Done',
+  };
+  const stepKey = (staffStatus || '').toLowerCase();
+  const computedStaffStatus =
+    STAFF_STEP_TEXT[stepKey] ??
+    (stepKey.includes('on route') || status === 'Staff on route'
+      ? 'On the way'
+      : stepKey === 'assigned' || stepKey === 'finding staff...'
+        ? undefined
+        : staffStatus);
   
   const getBadgeStyles = (color: string) => {
     switch(color) {

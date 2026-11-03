@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from "react";
-import { Outlet, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Wrench,
   CalendarDays,
+  CalendarClock,
   BarChart3,
   Star,
-  LogOut,
   Menu,
-  ShieldCheck,
-  X,
+  Ticket,
+  UsersRound,
+  Contact,
   Bell,
   CalendarCheck,
   Clock,
@@ -25,8 +26,11 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
 import { useNotifications, type AppNotification } from "../../../contexts/NotificationsContext";
 import { useAdminNotificationSync } from "../../../hooks/useAdminNotificationSync";
+import { useAdminOpsSync } from "../../../hooks/useAdminOpsSync";
+import { useServices, useStaffDirectory, useStaffSettings } from "../../../hooks/useOperations";
 import ThemeToggle from "../../../components/ui/ThemeToggle";
 import ProfileChip from "../../../components/ui/ProfileChip";
+import DashboardSidebar, { type SidebarItem } from "../../../components/dashboard/DashboardSidebar";
 import Tooltip from "../../../components/ui/Tooltip";
 import PageHeading from "../../../components/ui/PageHeading";
 import { DASHBOARD_BAR_HEIGHT, findPageHeading, type PageHeadingDef } from "../../../lib/pageHeadings";
@@ -173,14 +177,18 @@ function AdminBellDropdown({
 
 // Page titles shown in the top bar (pages don't render their own)
 const PAGE_HEADINGS: PageHeadingDef[] = [
-  { path: "", title: "Dashboard", description: "Today's bookings, staff and revenue at a glance" },
-  { path: "notifications", title: "Notifications", description: "Bookings, cancellations, payments and system alerts" },
-  { path: "service-management", title: "Service Management", description: "Manage the services and packages you offer" },
+  { path: "", title: "Dashboard", description: "Today's bookings, crews and takings at a glance" },
+  { path: "schedule", title: "Schedule", description: "Who's working, their jobs and lunches, hour by hour" },
   { path: "appointments/cancel", title: "Cancel appointment", description: "Give a reason and let the customer know" },
-  { path: "appointments/reschedule", title: "Reschedule appointment", description: "Pick a new slot and record why it changed" },
-  { path: "appointments", title: "Customer Appointments", description: "Approve, reschedule and cancel bookings in real time" },
-  { path: "business-analytics", title: "Business Analytics", description: "Revenue, bookings and customer trends" },
+  { path: "appointments/reschedule", title: "Reschedule appointment", description: "Pick a new free time and record why it changed" },
+  { path: "appointments", title: "Appointments", description: "Confirm bookings, assign crews, reschedule and cancel" },
+  { path: "walk-ins", title: "Walk-ins", description: "Tickets for customers who arrive at the bay without a booking" },
+  { path: "staff", title: "Staff", description: "Your team, crews, availability and staff sign-up access" },
+  { path: "customers", title: "Customers", description: "Everyone who has booked, with their history and membership" },
+  { path: "service-management", title: "Services & Business", description: "Packages, prices, opening days and fees" },
   { path: "reviews", title: "Reviews", description: "What customers are saying about your washes" },
+  { path: "business-analytics", title: "Analytics", description: "Revenue, bookings and busiest times" },
+  { path: "notifications", title: "Notifications", description: "Bookings, cancellations, payments and system alerts" },
 ];
 
 export default function AdminDashboardLayout() {
@@ -221,6 +229,19 @@ export default function AdminDashboardLayout() {
 
   // Real-time synchronization of admin events into notifications
   useAdminNotificationSync(isAdmin);
+
+  // Keep staff settings and booked-slot records complete for availability
+  const { staff: staffDirectory, loading: staffLoading } = useStaffDirectory();
+  const staffSettings = useStaffSettings();
+  const { items: services, usingDefaults: usingDefaultServices } = useServices();
+  useAdminOpsSync({
+    enabled: isAdmin,
+    staff: staffDirectory,
+    staffLoading,
+    settings: staffSettings,
+    services,
+    usingDefaultServices,
+  });
 
   // Mobile sidebar state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -277,147 +298,32 @@ export default function AdminDashboardLayout() {
   const displayName = currentUser.displayName || "Admin";
   const pageHeading = findPageHeading(location.pathname, "/dashboard/admin", PAGE_HEADINGS);
 
-  const navItems = [
-    {
-      name: "Dashboard",
-      path: "/dashboard/admin",
-      icon: <LayoutDashboard className="w-4 h-4" />,
-      exact: true,
-    },
-    {
-      name: "Service Management",
-      path: "/dashboard/admin/service-management",
-      icon: <Wrench className="w-4 h-4" />,
-    },
-    {
-      name: "Appointment",
-      path: "/dashboard/admin/appointments",
-      icon: <CalendarDays className="w-4 h-4" />,
-    },
-    {
-      name: "Business Analytics",
-      path: "/dashboard/admin/business-analytics",
-      icon: <BarChart3 className="w-4 h-4" />,
-    },
-    {
-      name: "Reviews",
-      path: "/dashboard/admin/reviews",
-      icon: <Star className="w-4 h-4" />,
-    },
-    {
-      name: "Notifications",
-      path: "/dashboard/admin/notifications",
-      icon: <Bell className="w-4 h-4" />,
-    },
+  const navItems: SidebarItem[] = [
+    { name: "Dashboard", path: "/dashboard/admin", icon: <LayoutDashboard />, exact: true },
+    { name: "Schedule", path: "/dashboard/admin/schedule", icon: <CalendarClock /> },
+    { name: "Appointments", path: "/dashboard/admin/appointments", icon: <CalendarDays /> },
+    { name: "Walk-ins", path: "/dashboard/admin/walk-ins", icon: <Ticket /> },
+    { name: "Staff", path: "/dashboard/admin/staff", icon: <UsersRound /> },
+    { name: "Customers", path: "/dashboard/admin/customers", icon: <Contact /> },
+    { name: "Services & Business", path: "/dashboard/admin/service-management", icon: <Wrench /> },
+    { name: "Reviews", path: "/dashboard/admin/reviews", icon: <Star /> },
+    { name: "Analytics", path: "/dashboard/admin/business-analytics", icon: <BarChart3 /> },
   ];
 
   return (
-    <div className={theme}>
+    <div className={theme} data-dashboard-root>
       <div className="min-h-screen bg-[#101010] font-sans flex text-[#F5F5F5] transition-colors duration-300 selection:bg-[#E86A33] selection:text-white relative">
-        {/* Atmospheric Dark-Mode Effect */}
-        <div
-          className="absolute inset-0 pointer-events-none z-0"
-          style={{
-            background:
-              "radial-gradient(circle at 80% 0%, rgba(232,106,51,0.035), transparent 35%)",
-          }}
+
+        <DashboardSidebar
+          homePath="/dashboard/admin"
+          items={navItems}
+          onLogout={() => setIsLogoutModalOpen(true)}
+          mobileOpen={mobileMenuOpen}
+          onMobileClose={() => setMobileMenuOpen(false)}
         />
 
-        {/* Mobile Sidebar Overlay */}
-        {mobileMenuOpen && (
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden"
-            onClick={() => setMobileMenuOpen(false)}
-          />
-        )}
-
-        {/* Admin Sidebar */}
-        <aside
-          className={`w-[240px] bg-[#171717] border-r border-[#2C2C2C] fixed inset-y-0 left-0 flex flex-col z-40 transition-transform duration-300 ease-in-out ${
-            mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-          }`}
-        >
-          {/* Logo */}
-          <div className={`${DASHBOARD_BAR_HEIGHT} flex items-center justify-between px-6 border-b border-[#2C2C2C]`}>
-            <Link to="/dashboard/admin" className="flex items-center group">
-              <img
-                src={theme === "light" ? "/images/logo-light.png" : "/images/logo.png"}
-                alt="WashWizzy"
-                className="w-28 h-auto object-contain"
-              />
-            </Link>
-            <button
-              onClick={() => setMobileMenuOpen(false)}
-              className="p-1 rounded-lg text-[#A1A1AA] hover:text-[#F5F5F5] lg:hidden cursor-pointer"
-              aria-label="Close Menu"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Navigation items */}
-          <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-            {navItems.map((item) => {
-              const isActive = item.exact
-                ? location.pathname === item.path
-                : location.pathname.startsWith(item.path);
-
-              return (
-                <Link
-                  key={item.name}
-                  to={item.path}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-3.5 px-[16px] py-[11px] min-h-[46px] rounded-lg transition-all font-medium text-[14px] ${
-                    isActive
-                      ? "bg-[rgba(232,106,51,0.10)] text-[#E86A33] border border-[#E86A33]/20 font-semibold"
-                      : "text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#F5F5F5]"
-                  }`}
-                >
-                  <div className="[&>svg]:w-[18px] [&>svg]:h-[18px]">
-                    {item.icon}
-                  </div>
-                  <span className="flex-1">{item.name}</span>
-                  {item.name === "Notifications" && unreadCount > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-[#E86A33] text-white text-[10px] font-bold">
-                      {unreadCount}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Admin Account Section at the bottom */}
-          <div className="p-4 border-t border-[#2C2C2C] mt-auto">
-            <div className="flex items-center gap-3 px-[16px] py-[11px] min-h-[48px]">
-              <div className="w-8 h-8 rounded-full bg-[#1F1F1F] border border-[#2C2C2C] shrink-0 flex items-center justify-center">
-                <ShieldCheck className="w-4 h-4 text-[#E86A33]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-medium truncate text-[#F5F5F5]">
-                  {displayName}
-                </p>
-                <p className="text-[11px] truncate mt-0.5 text-[#A1A1AA]">
-                  Admin Account
-                </p>
-              </div>
-            </div>
-
-            {/* Log Out Button */}
-            <button
-              onClick={() => setIsLogoutModalOpen(true)}
-              className="mt-1.5 w-full flex items-center gap-3.5 px-[16px] py-[11px] min-h-[46px] rounded-lg transition-all font-medium text-[14px] text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#F5F5F5] cursor-pointer"
-            >
-              <div className="[&>svg]:w-[18px] [&>svg]:h-[18px]">
-                <LogOut className="w-4 h-4" />
-              </div>
-              Log Out
-            </button>
-          </div>
-        </aside>
-
         {/* Main Content Area */}
-        <main className="flex-1 lg:ml-[240px] flex flex-col min-h-screen relative z-10">
+        <main className="flex-1 lg:ml-[240px] flex flex-col min-h-screen relative z-10 min-w-0">
           {/* Top Bar */}
           <header className={`${DASHBOARD_BAR_HEIGHT} bg-[#101010]/80 backdrop-blur-md shadow-md border-b border-[#2C2C2C] sticky top-0 z-20 px-4 sm:px-8 flex items-center justify-between`}>
             <div className="flex items-center gap-3 min-w-0">

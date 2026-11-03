@@ -1,5 +1,6 @@
 import {
   collection,
+  collectionGroup,
   doc,
   setDoc,
   deleteDoc,
@@ -7,6 +8,7 @@ import {
   query,
   orderBy,
   serverTimestamp,
+  where,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { recordReviewPoints } from './rewards';
@@ -25,6 +27,36 @@ export interface CustomerReview {
   status: 'Published' | 'Pending Approval' | 'Rejected';
   createdAt: number;
   updatedAt?: number;
+  /** The crew (or solo staff member) who did the job, so they can see the review */
+  staffUids?: string[];
+  staffName?: string;
+  hiddenByAdmin?: boolean;
+  ownerReply?: string;
+}
+
+/** Reviews of jobs a staff member worked on (hidden ones are left out). */
+export function subscribeToStaffReviews(
+  staffUid: string,
+  callback: (reviews: CustomerReview[]) => void
+): () => void {
+  if (!staffUid) {
+    callback([]);
+    return () => {};
+  }
+  return onSnapshot(
+    query(collectionGroup(db, 'reviews'), where('staffUids', 'array-contains', staffUid)),
+    (snap) => {
+      const list = snap.docs
+        .map((d) => ({ ...(d.data() as CustomerReview), id: d.id }))
+        .filter((r) => !r.hiddenByAdmin);
+      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      callback(list);
+    },
+    (err) => {
+      console.warn('Staff reviews unavailable:', err.message);
+      callback([]);
+    }
+  );
 }
 
 export interface ReviewStats {

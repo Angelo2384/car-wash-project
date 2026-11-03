@@ -524,7 +524,7 @@ export default function CustomerProfile() {
         {/* Left: Profile Overview Card (7 cols) */}
         <div className="lg:col-span-7 bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-7 flex flex-col justify-between shadow-lg relative overflow-hidden group hover:border-[#3C3C3C] transition-all">
           {/* Subtle Top Accent */}
-          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#FFA26B] to-transparent" />
+          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
 
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
@@ -638,7 +638,7 @@ export default function CustomerProfile() {
         {/* Right: Loyalty Points Card (5 cols) */}
         <div className="lg:col-span-5 bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-7 flex flex-col justify-between shadow-lg relative overflow-hidden group hover:border-[#3C3C3C] transition-all">
           {/* Top Green Accent */}
-          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#35B86B] via-[#35B86B]/40 to-transparent" />
+          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#35B86B] via-[#35B86B]/50 to-transparent" />
 
           <div>
             <div className="flex items-center justify-between">
@@ -728,7 +728,7 @@ export default function CustomerProfile() {
             <Button
               variant="primary"
               onClick={openAddVehicleModal}
-              className="text-xs py-2 px-3.5 shadow-md shadow-[#E86A33]/20"
+              className="text-xs py-2 px-3.5"
             >
               <Plus className="w-4 h-4" />
               Add Vehicle
@@ -1115,7 +1115,7 @@ export default function CustomerProfile() {
             <Button
               variant="primary"
               onClick={() => navigate("/dashboard/customer/booking")}
-              className="mt-4 text-xs py-2 px-4 shadow-md shadow-[#E86A33]/20"
+              className="mt-4 text-xs py-2 px-4"
             >
               Book a Wash Now
               <ArrowRight className="w-3.5 h-3.5" />
@@ -1214,7 +1214,7 @@ export default function CustomerProfile() {
       {isEditProfileOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative w-full max-w-md bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col gap-5 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] to-[#FFA26B]" />
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
 
             <div className="flex items-start justify-between">
               <div>
@@ -1280,7 +1280,7 @@ export default function CustomerProfile() {
       {isVehicleModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative w-full max-w-md bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col gap-5 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] to-[#FFA26B]" />
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
 
             <div className="flex items-start justify-between">
               <div>
@@ -1426,7 +1426,7 @@ export default function CustomerProfile() {
                 type="button"
                 onClick={handleConfirmDeleteVehicle}
                 disabled={isDeletingVehicle}
-                className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-red-600/20"
+                className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isDeletingVehicle ? "Deleting..." : "Delete Vehicle"}
               </button>
@@ -1439,7 +1439,7 @@ export default function CustomerProfile() {
       {isPaymentModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative w-full max-w-md bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col gap-5 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] to-[#FFA26B]" />
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
 
             <div className="flex items-start justify-between">
               <div>
@@ -1567,7 +1567,7 @@ export default function CustomerProfile() {
                 type="button"
                 onClick={handleConfirmDeletePayment}
                 disabled={isDeletingPayment}
-                className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-red-600/20"
+                className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isDeletingPayment ? "Removing..." : "Remove Card"}
               </button>
@@ -1580,7 +1580,7 @@ export default function CustomerProfile() {
       {viewingReceipt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative w-full max-w-md bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col gap-5 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#35B86B] to-[#35B86B]/50" />
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#35B86B] via-[#35B86B]/50 to-transparent" />
 
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">

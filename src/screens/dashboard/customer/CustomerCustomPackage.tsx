@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../../components/ui/Button';
+import { activeAddons, type ServiceItem } from '../../../lib/business';
+import { useServices } from '../../../hooks/useOperations';
 import {
   ArrowLeft,
   Check,
@@ -34,23 +36,42 @@ interface Service {
 }
 
 // ─── Service catalogue ────────────────────────────────────────────────────────
-const SERVICES: Service[] = [
-  { id: 'ext-hand-wash',    name: 'Exterior Hand Wash',      description: 'Full hand wash & rinse of all exterior panels.',            price: 75,  duration: 25, category: 'Exterior', icon: <Droplets   className="w-5 h-5" />, popular: true  },
-  { id: 'ext-tyre-dress',   name: 'Tyre & Rim Dressing',     description: 'Deep-clean rims and apply shine dressing to tyres.',        price: 50,  duration: 15, category: 'Exterior', icon: <Wind       className="w-5 h-5" />               },
-  { id: 'ext-clay-bar',     name: 'Clay Bar Treatment',      description: 'Removes bonded contaminants for a silky-smooth finish.',     price: 120, duration: 30, category: 'Exterior', icon: <Layers     className="w-5 h-5" />               },
-  { id: 'ext-machine-pol',  name: 'Machine Polish',          description: 'Single-stage machine polish to remove light swirls.',        price: 350, duration: 90, category: 'Exterior', icon: <Sparkles   className="w-5 h-5" />, popular: true  },
-  { id: 'ext-ceramic',      name: 'Ceramic Coating',         description: '9H ceramic coating for long-lasting paint protection.',      price: 650, duration: 120,category: 'Exterior', icon: <ShieldCheck className="w-5 h-5" />              },
-  { id: 'ext-windows',      name: 'Window Clean (Exterior)', description: 'Streak-free clean of all external glass surfaces.',          price: 45,  duration: 10, category: 'Exterior', icon: <Zap        className="w-5 h-5" />               },
-  { id: 'int-vacuum',       name: 'Full Interior Vacuum',    description: 'Thorough vacuum of carpets, seats, and boot.',               price: 60,  duration: 20, category: 'Interior', icon: <Wind       className="w-5 h-5" />, popular: true  },
-  { id: 'int-dashboard',    name: 'Dashboard & Console',     description: 'Wipe-down and condition of all interior hard surfaces.',     price: 80,  duration: 20, category: 'Interior', icon: <Brush      className="w-5 h-5" />               },
-  { id: 'int-leather',      name: 'Leather Conditioning',    description: 'Clean and condition all leather seats and surfaces.',        price: 180, duration: 35, category: 'Interior', icon: <Star       className="w-5 h-5" />               },
-  { id: 'int-windows',      name: 'Window Clean (Interior)', description: 'Streak-free clean of all interior glass surfaces.',          price: 45,  duration: 10, category: 'Interior', icon: <Zap        className="w-5 h-5" />               },
-  { id: 'int-odour',        name: 'Odour Elimination',       description: 'Ozone or enzyme treatment to neutralise bad odours.',        price: 150, duration: 30, category: 'Interior', icon: <Sparkles   className="w-5 h-5" />               },
-  { id: 'int-shampoo',      name: 'Carpet & Seat Shampoo',   description: 'Deep extraction shampoo for seats and floor carpets.',       price: 220, duration: 50, category: 'Interior', icon: <Droplets   className="w-5 h-5" />               },
-  { id: 'eng-rinse',        name: 'Engine Bay Rinse',        description: 'Light rinse and degrease of the engine compartment.',        price: 120, duration: 25, category: 'Engine',   icon: <Cpu        className="w-5 h-5" />               },
-  { id: 'eng-detail',       name: 'Full Engine Detail',      description: 'Full steam-clean and dress of all engine bay components.',   price: 250, duration: 45, category: 'Engine',   icon: <Layers     className="w-5 h-5" />, popular: true  },
-  { id: 'eng-protect',      name: 'Engine Protectant Coat',  description: 'Apply heat-resistant protectant to plastic and rubber.',    price: 90,  duration: 15, category: 'Engine',   icon: <ShieldCheck className="w-5 h-5" />              },
-];
+// Icons by service id for the built-in catalogue; new services fall back to their category icon
+const SERVICE_ICONS: Record<string, React.ReactNode> = {
+  'ext-hand-wash': <Droplets className="w-5 h-5" />,
+  'ext-tyre-dress': <Wind className="w-5 h-5" />,
+  'ext-clay-bar': <Layers className="w-5 h-5" />,
+  'ext-machine-pol': <Sparkles className="w-5 h-5" />,
+  'ext-ceramic': <ShieldCheck className="w-5 h-5" />,
+  'ext-windows': <Zap className="w-5 h-5" />,
+  'int-vacuum': <Wind className="w-5 h-5" />,
+  'int-dashboard': <Brush className="w-5 h-5" />,
+  'int-leather': <Star className="w-5 h-5" />,
+  'int-windows': <Zap className="w-5 h-5" />,
+  'int-odour': <Sparkles className="w-5 h-5" />,
+  'int-shampoo': <Droplets className="w-5 h-5" />,
+  'eng-rinse': <Cpu className="w-5 h-5" />,
+  'eng-detail': <Layers className="w-5 h-5" />,
+  'eng-protect': <ShieldCheck className="w-5 h-5" />,
+};
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  Exterior: <Droplets className="w-5 h-5" />,
+  Interior: <Brush className="w-5 h-5" />,
+  Engine: <Cpu className="w-5 h-5" />,
+};
+
+function toService(item: ServiceItem): Service {
+  return {
+    id: item.id,
+    name: item.name,
+    description: item.description || '',
+    price: item.price,
+    duration: item.durationMinutes,
+    category: (['Exterior', 'Interior', 'Engine'].includes(item.category) ? item.category : 'Exterior') as Service['category'],
+    icon: SERVICE_ICONS[item.id] ?? CATEGORY_ICONS[item.category] ?? <Sparkles className="w-5 h-5" />,
+    popular: item.popular,
+  };
+}
 
 const CATEGORIES: Category[] = ['All', 'Exterior', 'Interior', 'Engine'];
 const VAT = 0.15;
@@ -83,7 +104,7 @@ function ServiceCard({ service, selected, onToggle }: { service: Service; select
 
       {/* Check indicator */}
       {selected && (
-        <div className="absolute top-3 left-3 w-5 h-5 rounded-full bg-[#E86A33] flex items-center justify-center shadow-md shadow-[#E86A33]/25">
+        <div className="absolute top-3 left-3 w-5 h-5 rounded-full bg-[#E86A33] flex items-center justify-center">
           <Check className="w-3 h-3 text-white" />
         </div>
       )}
@@ -120,13 +141,16 @@ function ServiceCard({ service, selected, onToggle }: { service: Service; select
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function CustomerCustomPackage() {
+  // Individual services (and prices) come from the admin's catalogue
+  const { items } = useServices();
+  const SERVICES = useMemo(() => activeAddons(items).map(toService), [items]);
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState<Category>('All');
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const filtered = useMemo(
     () => activeCategory === 'All' ? SERVICES : SERVICES.filter((s) => s.category === activeCategory),
-    [activeCategory],
+    [activeCategory, SERVICES],
   );
 
   const selectedServices = SERVICES.filter((s) => selected.has(s.id));
@@ -166,7 +190,7 @@ export default function CustomerCustomPackage() {
                 onClick={() => setActiveCategory(cat)}
                 className={`px-4 py-2 rounded-full text-[13px] font-semibold border transition-all duration-150
                   ${activeCategory === cat
-                    ? 'bg-[#E86A33] border-[#E86A33] text-white shadow-md shadow-[#E86A33]/20'
+                    ? 'bg-[#E86A33] border-[#E86A33] text-white'
                     : 'bg-[#171717] border-[#2C2C2C] text-[#A1A1AA] hover:border-[#3C3C3C] hover:text-[#F5F5F5]'
                   }`}
               >

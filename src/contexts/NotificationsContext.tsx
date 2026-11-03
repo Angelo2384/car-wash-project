@@ -446,7 +446,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       if (wasAdded) {
         // Persist to Firestore outside the state updater to avoid React StrictMode double-invocation issues
         const notifDocRef = doc(db, "users", activeUid, "notifications", newNotif.id);
-        setDoc(notifDocRef, newNotif).catch((err) => {
+        // Firestore rejects undefined fields (e.g. no metadata), so drop them before saving
+        const cleanNotif = Object.fromEntries(Object.entries(newNotif).filter(([, v]) => v !== undefined));
+        setDoc(notifDocRef, cleanNotif).catch((err) => {
           console.warn("Failed to save notification in Firestore:", err);
         });
         window.dispatchEvent(new Event("storage"));

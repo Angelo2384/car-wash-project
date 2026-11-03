@@ -654,6 +654,20 @@ body.light,
 .light :is(.hover\:text-white, .hover\:text-black):hover { color: var(--lt-text) !important; }
 }
 
+/* Chart colours (validated for colour-blind separation and contrast in both themes) */
+.viz-root {
+  --series-1: #d95926; /* orange: single series, Mobile */
+  --series-2: #3987e5; /* blue: Bay */
+  --viz-grid: #2c2c2c;
+  --viz-surface: #171717;
+}
+.light .viz-root {
+  --series-1: #eb6834;
+  --series-2: #2a78d6;
+  --viz-grid: #e5e7eb;
+  --viz-surface: #ffffff;
+}
+
 @layer utilities {
   /* Transparent Soap Bubble */
   .foam-bubble {

@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../../components/ui/Button';
+import { activePackages, formatDuration, formatRand, type ServiceItem } from '../../../lib/business';
+import { useServices } from '../../../hooks/useOperations';
 import {
   Check,
   Clock,
@@ -11,68 +13,41 @@ import {
   Star,
 } from 'lucide-react';
 
-// ─── Package data ─────────────────────────────────────────────────────────────
-const packages = [
-  {
-    id: 'express',
-    name: 'Express Wash',
-    price: 'R75',
-    tagline: 'Quick clean, great results',
-    description:
-      'A fast, efficient wash perfect for keeping your car looking fresh between deeper cleans.',
-    duration: '20–30 min',
-    badge: null as string | null,
-    accentColor: '#A1A1AA',
-    services: [
-      'Exterior hand wash',
-      'Wheel rinse',
-      'Window wipe-down',
-      'Quick interior vacuum',
-    ],
-    icon: <Droplets className="w-5 h-5" />,
-  },
-  {
-    id: 'premium',
-    name: 'Premium Wash',
-    price: 'R275',
-    tagline: 'Our most popular choice',
-    description:
-      'A thorough wash and detail that leaves your car spotless inside and out — our crowd favourite.',
-    duration: '60–75 min',
-    badge: 'Most Popular' as string | null,
-    accentColor: '#E86A33',
-    services: [
-      'Full exterior hand wash & dry',
-      'Full interior vacuum & wipe-down',
-      'Dashboard & console detail',
-      'Tyre dressing & rim shine',
-      'Window clean (inside & out)',
-      'Air freshener finish',
-    ],
-    icon: <Sparkles className="w-5 h-5" />,
-  },
-  {
-    id: 'elite',
-    name: 'Elite Wash',
-    price: 'R875',
-    tagline: 'The full luxury treatment',
-    description:
-      'A premium, concierge-level detail that restores your car to showroom condition, every time.',
-    duration: '2–3 hrs',
-    badge: 'Premium' as string | null,
-    accentColor: '#35B86B',
-    services: [
-      'Everything in Premium Wash',
-      'Paint decontamination & clay bar',
-      'Machine polish & paint correction',
-      'Ceramic coating application',
-      'Full leather conditioning',
-      'Engine bay clean',
-      'Odour elimination treatment',
-    ],
-    icon: <ShieldCheck className="w-5 h-5" />,
-  },
-];
+// ─── Package data (from the admin's Services & Business catalogue) ───────────
+type PackageCardData = {
+  id: string;
+  name: string;
+  price: string;
+  tagline: string;
+  description: string;
+  duration: string;
+  badge: string | null;
+  accentColor: string;
+  services: string[];
+  icon: React.ReactNode;
+};
+
+const ACCENTS: Record<string, string> = { express: '#A1A1AA', premium: '#E86A33', elite: '#35B86B' };
+const ICONS: Record<string, React.ReactNode> = {
+  express: <Droplets className="w-5 h-5" />,
+  premium: <Sparkles className="w-5 h-5" />,
+  elite: <ShieldCheck className="w-5 h-5" />,
+};
+
+function toCard(item: ServiceItem): PackageCardData {
+  return {
+    id: item.id,
+    name: item.name,
+    price: formatRand(item.price),
+    tagline: item.tagline || '',
+    description: item.description || '',
+    duration: formatDuration(item.durationMinutes),
+    badge: item.popular ? 'Most Popular' : null,
+    accentColor: ACCENTS[item.id] ?? '#E86A33',
+    services: item.includes,
+    icon: ICONS[item.id] ?? <Sparkles className="w-5 h-5" />,
+  };
+}
 
 // ─── Image placeholder ────────────────────────────────────────────────────────
 function PackageImage({
@@ -85,9 +60,7 @@ function PackageImage({
   return (
     <div
       className="w-full h-40 rounded-xl flex flex-col items-center justify-center gap-3 relative overflow-hidden"
-      style={{
-        background: `linear-gradient(135deg, #101010 0%, #1A1A1A 60%, ${accent}18 100%)`,
-      }}
+      style={{ background: '#101010' }}
     >
       <div
         className="w-16 h-16 rounded-full flex items-center justify-center"
@@ -98,10 +71,6 @@ function PackageImage({
       <span className="text-[#71717A] text-[11px] font-medium tracking-wide uppercase">
         Car Wash Illustration
       </span>
-      <div
-        className="absolute bottom-0 left-0 right-0 h-[2px] opacity-30"
-        style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }}
-      />
     </div>
   );
 }
@@ -111,7 +80,7 @@ function PackageCard({
   pkg,
   onBook,
 }: {
-  pkg: (typeof packages)[0];
+  pkg: PackageCardData;
   onBook: (id: string) => void;
 }) {
   const isHighlighted = pkg.badge === 'Most Popular';
@@ -121,7 +90,7 @@ function PackageCard({
       className={`relative flex flex-col bg-[#171717] rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-1 shadow-lg
         ${
           isHighlighted
-            ? 'border-2 border-[#E86A33] shadow-[0_0_32px_rgba(232,106,51,0.10)]'
+            ? 'border-2 border-[#E86A33]'
             : 'border border-[#2C2C2C] hover:border-[#3C3C3C]'
         }`}
     >
@@ -197,11 +166,10 @@ function PackageCard({
           className="w-full py-3 rounded-xl font-semibold text-sm transition-all duration-200 hover:opacity-90 active:scale-[0.98]"
           style={{
             background: isHighlighted
-              ? 'linear-gradient(135deg, #E86A33, #cc5a2a)'
+              ? '#E86A33'
               : `${pkg.accentColor}15`,
             color: isHighlighted ? '#fff' : pkg.accentColor,
             border: isHighlighted ? 'none' : `1.5px solid ${pkg.accentColor}25`,
-            boxShadow: isHighlighted ? '0 4px 20px rgba(232,106,51,0.20)' : 'none',
           }}
         >
           Book now
@@ -214,6 +182,8 @@ function PackageCard({
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function CustomerPackages() {
   const navigate = useNavigate();
+  const { items } = useServices();
+  const packages = activePackages(items).map(toCard);
 
   const handleBook = (id: string) => {
     navigate('/dashboard/customer/booking', { state: { packageId: id } });
@@ -244,16 +214,8 @@ export default function CustomerPackages() {
 
       {/* Custom package banner */}
       <div className="relative bg-[#171717] border border-[#2C2C2C] rounded-2xl p-7 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 overflow-hidden shadow-lg">
-        {/* Atmospheric glow */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              'radial-gradient(ellipse at 90% 50%, rgba(232,106,51,0.06), transparent 60%)',
-          }}
-        />
         {/* Top accent */}
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/30 to-transparent" />
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
 
         <div className="flex flex-col gap-2 relative z-10 max-w-lg">
           <div className="flex items-center gap-2.5 mb-0.5">

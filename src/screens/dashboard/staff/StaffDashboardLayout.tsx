@@ -1,19 +1,18 @@
 import { useState, useEffect, useRef } from "react";
-import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   CalendarDays,
   Star,
-  Settings,
   Bell,
-  LogOut,
   CalendarCheck,
   Clock,
   CheckCircle2,
   Crown,
   Gift,
   Menu,
-  X,
+  ShieldOff,
+  Ticket,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "../../../lib/firebase";
@@ -22,7 +21,10 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
 import ThemeToggle from "../../../components/ui/ThemeToggle";
 import ProfileChip from "../../../components/ui/ProfileChip";
-import UserAvatar from "../../../components/ui/UserAvatar";
+import DashboardSidebar from "../../../components/dashboard/DashboardSidebar";
+import { subscribeToOwnStaffSettings, type WorkType } from "../../../lib/staffOps";
+import { useCrews } from "../../../hooks/useOperations";
+import StaffUndoBar from "../../../components/staff/StaffUndoBar";
 import Tooltip from "../../../components/ui/Tooltip";
 import PageHeading from "../../../components/ui/PageHeading";
 import { DASHBOARD_BAR_HEIGHT, findPageHeading, type PageHeadingDef } from "../../../lib/pageHeadings";
@@ -133,6 +135,7 @@ const PAGE_HEADINGS: PageHeadingDef[] = [
   { path: "", title: "Dashboard", description: "Your jobs and walk-ins for today" },
   { path: "appointments", title: "My Assigned Jobs", description: "Review and manage bookings the owner has assigned to you" },
   { path: "reviews", title: "Reviews", description: "Feedback customers have left on your washes" },
+  { path: "walk-ins", title: "Walk-ins", description: "Today's walk-in tickets at the bay" },
   { path: "profile", title: "My Profile", description: "Manage your staff account and details" },
 ];
 
@@ -145,6 +148,21 @@ export default function StaffDashboardLayout() {
 
   // Mobile sidebar state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // The admin can deactivate a staff account; it then can't use the staff area
+  const [isDeactivated, setIsDeactivated] = useState(false);
+  const [ownWorkType, setOwnWorkType] = useState<WorkType>("mobile");
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    return subscribeToOwnStaffSettings(currentUser.uid, (s) => {
+      setIsDeactivated(s.active === false);
+      setOwnWorkType(s.workType);
+    });
+  }, [currentUser?.uid]);
+  // Crews work as one unit, so a crew's work type wins over the person's own
+  const crews = useCrews();
+  const myCrew = crews.find((c) => currentUser?.uid && c.memberUids.includes(currentUser.uid));
+  const onBay = (myCrew?.workType ?? ownWorkType) === "bay";
 
   // Bell dropdown state
   const [bellOpen, setBellOpen] = useState(false);
@@ -211,6 +229,16 @@ export default function StaffDashboardLayout() {
       icon: <CalendarDays className="w-4 h-4" />,
       exact: false,
     },
+    ...(onBay
+      ? [
+          {
+            name: "Walk-ins",
+            path: "/dashboard/staff/walk-ins",
+            icon: <Ticket className="w-4 h-4" />,
+            exact: false,
+          },
+        ]
+      : []),
     {
       name: "My Reviews",
       path: "/dashboard/staff/reviews",
@@ -221,127 +249,44 @@ export default function StaffDashboardLayout() {
 
   const isProfileActive = location.pathname === "/dashboard/staff/profile";
 
+  if (isDeactivated) {
+    return (
+      <div className={theme} data-dashboard-root>
+        <div className="min-h-screen bg-[#101010] flex items-center justify-center p-6 text-[#F5F5F5]">
+          <div className="max-w-md w-full bg-[#171717] border border-[#2C2C2C] rounded-2xl p-8 flex flex-col items-center text-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+              <ShieldOff className="w-6 h-6 text-red-500" />
+            </div>
+            <h1 className="text-xl font-bold font-display">Your staff account is deactivated</h1>
+            <p className="text-sm text-[#A1A1AA] leading-relaxed">
+              You can't view or take jobs right now. Contact the owner if you think this is a mistake.
+            </p>
+            <button
+              onClick={handleConfirmLogout}
+              className="mt-2 rounded-lg bg-burnt-orange hover:bg-burnt-orange-dark text-white px-6 py-3 font-semibold transition-colors"
+            >
+              Log out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={theme}>
+    <div className={theme} data-dashboard-root>
       <div className="min-h-screen bg-[#101010] font-sans flex text-[#F5F5F5] transition-colors duration-300 selection:bg-[#E86A33] selection:text-white relative">
-        {/* Atmospheric Dark-Mode Effect */}
-        <div
-          className="absolute inset-0 pointer-events-none z-0"
-          style={{
-            background:
-              "radial-gradient(circle at 80% 0%, rgba(232,106,51,0.035), transparent 35%)",
-          }}
+
+        <DashboardSidebar
+          homePath="/dashboard/staff"
+          items={navItems}
+          onLogout={() => setIsLogoutModalOpen(true)}
+          mobileOpen={mobileMenuOpen}
+          onMobileClose={() => setMobileMenuOpen(false)}
         />
 
-        {/* Mobile Sidebar Overlay */}
-        {mobileMenuOpen && (
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden"
-            onClick={() => setMobileMenuOpen(false)}
-          />
-        )}
-
-        {/* Staff Sidebar */}
-        <aside
-          className={`w-[240px] bg-[#171717] border-r border-[#2C2C2C] fixed inset-y-0 left-0 flex flex-col z-40 transition-transform duration-300 ease-in-out ${
-            mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-          }`}
-        >
-          {/* Logo */}
-          <div className={`${DASHBOARD_BAR_HEIGHT} flex items-center justify-between px-6 border-b border-[#2C2C2C]`}>
-            <Link to="/dashboard/staff" className="flex items-center group">
-              <img
-                src={theme === "light" ? "/images/logo-light.png" : "/images/logo.png"}
-                alt="WashWizzy"
-                className="w-28 h-auto object-contain"
-              />
-            </Link>
-            <button
-              onClick={() => setMobileMenuOpen(false)}
-              className="p-1 rounded-lg text-[#A1A1AA] hover:text-[#F5F5F5] lg:hidden"
-              aria-label="Close Menu"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Navigation items: exactly Dashboard, My Appointments, My Reviews */}
-          <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-            {navItems.map((item) => {
-              const isActive = item.exact
-                ? location.pathname === item.path
-                : location.pathname.startsWith(item.path);
-
-              return (
-                <Link
-                  key={item.name}
-                  to={item.path}
-                  className={`flex items-center gap-3.5 px-[16px] py-[11px] min-h-[46px] rounded-lg transition-all font-medium text-[14px] ${
-                    isActive
-                      ? "bg-[rgba(232,106,51,0.10)] text-[#E86A33] border border-[#E86A33]/20 font-semibold"
-                      : "text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#F5F5F5]"
-                  }`}
-                >
-                  <div className="[&>svg]:w-[18px] [&>svg]:h-[18px]">
-                    {item.icon}
-                  </div>
-                  {item.name}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Staff Profile Section at the bottom */}
-          <div className="p-4 border-t border-[#2C2C2C] mt-auto">
-            <Link
-              to="/dashboard/staff/profile"
-              className={`flex items-center gap-3 px-[16px] py-[11px] min-h-[48px] rounded-lg transition-colors cursor-pointer group ${
-                isProfileActive
-                  ? "bg-[rgba(232,106,51,0.10)] text-[#E86A33] border border-[#E86A33]/20"
-                  : "hover:bg-white/[0.04]"
-              }`}
-            >
-              <UserAvatar photoURL={photoURL} />
-              <div className="flex-1 min-w-0">
-                <p
-                  className={`text-[13px] font-medium truncate ${
-                    isProfileActive ? "text-[#E86A33]" : "text-[#F5F5F5]"
-                  }`}
-                >
-                  {displayName}
-                </p>
-                <p
-                  className={`text-[11px] truncate mt-0.5 ${
-                    isProfileActive ? "text-[#E86A33]/80" : "text-[#A1A1AA]"
-                  }`}
-                >
-                  Staff Account
-                </p>
-              </div>
-              <Settings
-                className={`w-4 h-4 transition-colors ${
-                  isProfileActive
-                    ? "text-[#E86A33]"
-                    : "text-[#71717A] group-hover:text-[#A1A1AA]"
-                }`}
-              />
-            </Link>
-
-            {/* Log Out Button */}
-            <button
-              onClick={() => setIsLogoutModalOpen(true)}
-              className="mt-1.5 w-full flex items-center gap-3.5 px-[16px] py-[11px] min-h-[46px] rounded-lg transition-all font-medium text-[14px] text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#F5F5F5] cursor-pointer"
-            >
-              <div className="[&>svg]:w-[18px] [&>svg]:h-[18px]">
-                <LogOut className="w-4 h-4" />
-              </div>
-              Log Out
-            </button>
-          </div>
-        </aside>
-
         {/* Main Content Area */}
-        <main className="flex-1 lg:ml-[240px] flex flex-col min-h-screen relative z-10">
+        <main className="flex-1 lg:ml-[240px] flex flex-col min-h-screen relative z-10 min-w-0">
           {/* Top Bar */}
           <header className={`${DASHBOARD_BAR_HEIGHT} bg-[#101010]/80 backdrop-blur-md shadow-md border-b border-[#2C2C2C] sticky top-0 z-20 px-4 sm:px-8 flex items-center justify-between`}>
             <div className="flex items-center gap-3 min-w-0">
@@ -396,6 +341,7 @@ export default function StaffDashboardLayout() {
           <div className="flex-1 p-4 sm:p-6 lg:p-8">
             <div className="max-w-[1400px] mx-auto">
               <Outlet context={{ theme }} />
+              <StaffUndoBar />
             </div>
           </div>
         </main>

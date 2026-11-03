@@ -22,6 +22,10 @@ import {
 } from '../../../lib/appointments';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
+import TimeSlotPicker from '../../../components/booking/TimeSlotPicker';
+import { formatBookingDate, formatHour, workHoursForPackageName } from '../../../lib/business';
+import { freeUnitsFor, withResolvedUnits, workTypeForService } from '../../../lib/scheduling';
+import { useBookedSlots, useServices, useStaffDirectory, useUnits } from '../../../hooks/useOperations';
 
 const RESCHEDULE_REASON_PRESETS = [
   'Owner schedule adjustment / optimal bay slot',
@@ -50,7 +54,14 @@ export default function AdminRescheduleAppointment() {
   // Form states
   const todayDateStr = new Date().toISOString().split('T')[0];
   const [newDate, setNewDate] = useState('');
-  const [newTime, setNewTime] = useState('10:00');
+  const [newHour, setNewHour] = useState<number | null>(null);
+  const newTime = newHour === null ? '' : formatHour(newHour);
+
+  // Availability for the new day: can the crew already on the job keep it?
+  const { items: services } = useServices();
+  const { staff } = useStaffDirectory();
+  const units = useUnits(newDate, staff);
+  const daySlots = withResolvedUnits(useBookedSlots(newDate), units);
   const [reason, setReason] = useState('');
 
   const [isLoading, setIsLoading] = useState(!appointment);
@@ -131,21 +142,37 @@ export default function AdminRescheduleAppointment() {
       return;
     }
 
+    if (!appointment || newHour === null) return;
+    const workHours = appointment.workHours || workHoursForPackageName(services, appointment.packageName);
+    const currentUnit = appointment.unitId || (appointment.assignedStaffUid ? `staff:${appointment.assignedStaffUid}` : null);
+    const free = freeUnitsFor({
+      units,
+      slots: daySlots,
+      booking: { id: appointment.id, startHour: newHour, workHours, type: workTypeForService(appointment.serviceType) },
+    });
+    const keepUnit = Boolean(currentUnit && free.some((u) => u.id === currentUnit || u.memberUids.includes(appointment.assignedStaffUid || '')));
+
     setIsSubmitting(true);
     try {
       await adminRescheduleAppointment(
         customerUid,
         appointmentId,
-        newDate,
+        formatBookingDate(newDate),
         newTime,
         reason.trim(),
         {
           uid: currentUser.uid,
           name: currentUser.displayName || 'Owner',
-        }
+        },
+        { bookingDate: newDate, startHour: newHour, workHours, keepUnit }
       );
 
-      showToast(`Appointment #${appointmentId} rescheduled to ${newDate} at ${newTime}. Customer was notified.`, 'success');
+      showToast(
+        `Moved to ${formatBookingDate(newDate)} at ${newTime}. ${
+          keepUnit || !currentUnit ? 'Customer notified.' : 'The crew wasn’t free then, so it needs a new crew.'
+        }`,
+        'success'
+      );
       navigate('/dashboard/admin/appointments');
     } catch (err: any) {
       console.error('Admin rescheduling failed:', err);
@@ -306,14 +333,14 @@ export default function AdminRescheduleAppointment() {
             </div>
             <span className="text-[11px] text-[#A1A1AA] mt-1">
               {appointment?.confirmed && appointment?.assignedStaffUid
-                ? 'Will remain Confirmed with owner reschedule tag'
-                : 'Will remain Awaiting Confirmation until staff member is assigned'}
+                ? 'Stays confirmed if the same crew is free then; otherwise it goes back to Needs a crew'
+                : 'Stays Awaiting Confirmation until you assign a crew'}
             </span>
           </div>
         </div>
 
         {/* Date and Time Inputs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <Input
             type="date"
             label="New Date *"
@@ -321,6 +348,7 @@ export default function AdminRescheduleAppointment() {
             min={todayDateStr}
             onChange={(e) => {
               setNewDate(e.target.value);
+              setNewHour(null);
               setValidationError(null);
             }}
             icon={<Calendar className="w-4 h-4" />}
@@ -328,17 +356,19 @@ export default function AdminRescheduleAppointment() {
             className="[color-scheme:dark]"
           />
 
-          <Input
-            type="time"
-            label="New Time *"
-            value={newTime}
-            onChange={(e) => {
-              setNewTime(e.target.value);
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-soft-gray ml-1">New Time *</span>
+          <TimeSlotPicker
+            date={newDate}
+            type={workTypeForService(appointment.serviceType)}
+            workHours={appointment.workHours || workHoursForPackageName(services, appointment.packageName)}
+            value={newHour}
+            onChange={(h) => {
+              setNewHour(h);
               setValidationError(null);
             }}
-            icon={<Clock className="w-4 h-4" />}
-            required
-            className="[color-scheme:dark]"
+            excludeId={appointment.id}
           />
         </div>
 
@@ -413,7 +443,7 @@ export default function AdminRescheduleAppointment() {
               isAlreadyCompleted ||
               isSubmitting
             }
-            className="gap-2 font-semibold shadow-md shadow-[#E86A33]/10"
+            className="gap-2 font-semibold"
           >
             <CheckCircle2 className="w-4 h-4" />
             {appointment?.confirmed && appointment?.assignedStaffUid

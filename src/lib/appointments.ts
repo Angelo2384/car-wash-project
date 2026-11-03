@@ -9,8 +9,11 @@ import {
   where,
   getDocs,
   onSnapshot,
+  type FirestoreError,
+  type QuerySnapshot,
 } from 'firebase/firestore';
 import { db } from './firebase.ts';
+import { removeBookedSlot, saveBookedSlot, workTypeForService, type Unit } from './scheduling';
 
 export interface StoredAppointment {
   id: string;
@@ -59,13 +62,27 @@ export interface StoredAppointment {
   phone?: string;
   email?: string;
   updatedAt?: any;
+  // Scheduling (added with crews): ISO date, start hour and length used for availability
+  bookingDate?: string;
+  startHour?: number;
+  workHours?: number;
+  /** The crew or solo staff member assigned ("crew:<id>" | "staff:<uid>") */
+  unitId?: string | null;
+  unitLabel?: string;
+  /** Everyone in the assigned unit; assignedStaffUid stays the first member for older screens */
+  assignedStaffUids?: string[];
+  /** Staff who were on the job before a customer reschedule unassigned them */
+  previousAssignedStaffUids?: string[];
+  /** The services in a custom package */
+  customServiceNames?: string[];
 }
 
 export const CALL_OUT_FEE = 150;
 
-export function calculateCallOutFee(serviceType?: string, hasMembership: boolean = false): number {
+/** `fee` comes from the admin's business settings; CALL_OUT_FEE is only the fallback. */
+export function calculateCallOutFee(serviceType?: string, hasMembership: boolean = false, fee: number = CALL_OUT_FEE): number {
   if (serviceType === 'Call-out' && !hasMembership) {
-    return CALL_OUT_FEE;
+    return fee;
   }
   return 0;
 }
@@ -98,6 +115,18 @@ export async function saveAppointment(appointment: StoredAppointment, uid?: stri
       },
       { merge: true }
     );
+
+    if (appointment.bookingDate && typeof appointment.startHour === 'number') {
+      await saveBookedSlot({
+        id: appointment.id,
+        customerUid: uid,
+        date: appointment.bookingDate,
+        startHour: appointment.startHour,
+        workHours: appointment.workHours || 1,
+        type: workTypeForService(appointment.serviceType),
+        unitId: null,
+      });
+    }
   }
 
   // Update local cache safely
@@ -145,9 +174,9 @@ export function isRescheduleEligible(
     return false;
   }
 
-  // If user has a membership: allowed up until 1 hour before appointment time
+  // Members may reschedule until 2 hours before; enough time for the crew to be reassigned
   if (hasMembership) {
-    return diffHours >= 1;
+    return diffHours >= 2;
   }
 
   // If user does not have a membership: only allowed if more than 24 hours away
@@ -248,6 +277,23 @@ export function getDynamicAppointmentStatus(
       isRefundEligible: false,
       cancellationPolicy: 'This appointment has been completed.',
       refundStatusText: 'Completed',
+    };
+  }
+
+  // 2b. Staff are on the job (set from the staff dashboard). Never "Missed" while they're
+  // on the way, there, or washing, even if the start time has passed.
+  const progress = (staffStatus || '').toLowerCase();
+  if (confirmed !== false && initialStatus !== 'Awaiting Confirmation' && (progress === 'arrived' || progress === 'washing' || progress.includes('on route'))) {
+    const label = progress === 'washing' ? 'Washing in progress' : progress === 'arrived' ? 'Staff arrived' : 'Staff on route';
+    return {
+      status: label,
+      statusColor: 'blue',
+      isLocked: true,
+      isMissed: false,
+      canReschedule: false,
+      isRefundEligible: false,
+      cancellationPolicy: 'Your detailer is on the job. Bookings are locked.',
+      refundStatusText: 'Non-refundable while in progress',
     };
   }
 
@@ -466,6 +512,7 @@ export async function cancelAppointment(
       },
       { merge: true }
     );
+    await removeBookedSlot(id).catch((e) => console.warn('Could not free booked slot:', e));
   }
 
   // Update local cache
@@ -815,35 +862,48 @@ export function subscribeToStaffAppointments(
     return () => {};
   }
 
-  const apptsQuery = query(
-    collectionGroup(db, 'appointments'),
-    where('assignedStaffUid', '==', staffUid)
-  );
+  // Crew jobs list every member in assignedStaffUids; older jobs only have assignedStaffUid
+  const byCrew = new Map<string, StoredAppointment & { customerUid: string }>();
+  const byLegacy = new Map<string, StoredAppointment & { customerUid: string }>();
 
-  return onSnapshot(
-    apptsQuery,
-    (snapshot) => {
-      const list: (StoredAppointment & { customerUid: string })[] = [];
+  const emit = () => {
+    const merged = new Map([...byLegacy, ...byCrew]);
+    const list = Array.from(merged.values());
+    list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    callback(list);
+  };
 
+  const collect = (target: Map<string, StoredAppointment & { customerUid: string }>) =>
+    (snapshot: QuerySnapshot) => {
+      target.clear();
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as StoredAppointment;
         const customerUid = data.customerUid || docSnap.ref.parent.parent?.id || '';
-        list.push({
-          ...data,
-          id: docSnap.id,
-          customerUid,
-        });
+        target.set(`${customerUid}/${docSnap.id}`, { ...data, id: docSnap.id, customerUid });
       });
+      emit();
+    };
 
-      // Sort by createdAt descending (newest first)
-      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      callback(list);
-    },
-    (err) => {
-      console.error('Failed to listen to staff assigned appointments:', err);
-      if (onError) onError(err);
-    }
+  const handleError = (err: FirestoreError) => {
+    console.error('Failed to listen to staff assigned appointments:', err);
+    if (onError) onError(err);
+  };
+
+  const unsubCrew = onSnapshot(
+    query(collectionGroup(db, 'appointments'), where('assignedStaffUids', 'array-contains', staffUid)),
+    collect(byCrew),
+    handleError
   );
+  const unsubLegacy = onSnapshot(
+    query(collectionGroup(db, 'appointments'), where('assignedStaffUid', '==', staffUid)),
+    collect(byLegacy),
+    handleError
+  );
+
+  return () => {
+    unsubCrew();
+    unsubLegacy();
+  };
 }
 
 export async function getTodaysAppointmentsAcrossAllCustomers(): Promise<(StoredAppointment & { customerUid: string })[]> {
@@ -1136,6 +1196,7 @@ export async function adminCancelAppointment(
     },
     { merge: true }
   );
+  await removeBookedSlot(appointmentId).catch((e) => console.warn('Could not free booked slot:', e));
 
   // Send in-app notification containing the reason to the customer
   try {
@@ -1163,7 +1224,9 @@ export async function adminRescheduleAppointment(
   newDate: string,
   newTime: string,
   reason: string,
-  adminUser: { uid: string; name?: string }
+  adminUser: { uid: string; name?: string },
+  /** Slot details for availability; keepUnit = the assigned crew is still free at the new time */
+  slot?: { bookingDate: string; startHour: number; workHours: number; keepUnit: boolean }
 ): Promise<void> {
   if (!newDate.trim() || !newTime.trim()) {
     throw new Error('Both new date and time are required.');
@@ -1199,14 +1262,28 @@ export async function adminRescheduleAppointment(
   const rescheduledBy = adminUser.uid;
   const rescheduledByName = adminUser.name || 'Owner';
 
-  // Only keep confirmed status if staff is already assigned and was previously confirmed
-  const wasConfirmed = currentData.confirmed === true && Boolean(currentData.assignedStaffUid);
+  // Keep the crew (and confirmed status) only if they're still free at the new time
+  const wasConfirmed =
+    currentData.confirmed === true && Boolean(currentData.assignedStaffUid) && (slot ? slot.keepUnit : true);
+  const unassign = slot && !slot.keepUnit && Boolean(currentData.assignedStaffUid);
 
   await setDoc(
     apptRef,
     {
       date: newDate,
       time: newTime,
+      ...(slot ? { bookingDate: slot.bookingDate, startHour: slot.startHour, workHours: slot.workHours } : {}),
+      ...(unassign
+        ? {
+            assignedStaffUid: null,
+            assignedStaffUids: [],
+            previousAssignedStaffUids: currentData.assignedStaffUids || [currentData.assignedStaffUid],
+            unitId: null,
+            unitLabel: '',
+            staffName: 'Pending Assignment',
+            staffStatus: 'Finding Staff...',
+          }
+        : {}),
       confirmed: wasConfirmed,
       status: wasConfirmed ? 'Confirmed' : 'Awaiting Confirmation',
       statusColor: wasConfirmed ? 'reward-green' : 'amber',
@@ -1225,6 +1302,18 @@ export async function adminRescheduleAppointment(
     { merge: true }
   );
 
+  if (slot) {
+    await saveBookedSlot({
+      id: appointmentId,
+      customerUid,
+      date: slot.bookingDate,
+      startHour: slot.startHour,
+      workHours: slot.workHours,
+      type: workTypeForService(currentData.serviceType),
+      unitId: wasConfirmed ? currentData.unitId ?? null : null,
+    }).catch((e) => console.warn('Could not update booked slot:', e));
+  }
+
   // Notify customer with old and new schedule details
   try {
     await sendCustomerNotification(customerUid, {
@@ -1239,20 +1328,181 @@ export async function adminRescheduleAppointment(
     console.warn('Failed to send customer reschedule notification:', err);
   }
 
-  // Also notify assigned staff member if one was assigned
-  if (currentData.assignedStaffUid) {
+  // Also notify everyone who was on the job
+  const staffToNotify = currentData.assignedStaffUids?.length
+    ? currentData.assignedStaffUids
+    : currentData.assignedStaffUid
+      ? [currentData.assignedStaffUid]
+      : [];
+  for (const staffUid of staffToNotify) {
     try {
-      await sendCustomerNotification(currentData.assignedStaffUid, {
-        title: 'Assigned Service Job Rescheduled',
-        message: `Your assigned job for ${currentData.customerName || 'a customer'} (${currentData.packageName || 'Wash Service'}) has been rescheduled to ${newDate} at ${newTime}. Reason: "${reason.trim()}".`,
+      await sendCustomerNotification(staffUid, {
+        title: unassign ? 'Job moved and unassigned' : 'Assigned Service Job Rescheduled',
+        message: unassign
+          ? `The job for ${currentData.customerName || 'a customer'} (${currentData.packageName || 'Wash Service'}) moved to ${newDate} at ${newTime}, and you're no longer on it.`
+          : `Your assigned job for ${currentData.customerName || 'a customer'} (${currentData.packageName || 'Wash Service'}) has been rescheduled to ${newDate} at ${newTime}. Reason: "${reason.trim()}".`,
         category: 'appointments',
         icon: 'clock',
         link: '/dashboard/staff/appointments',
-        eventId: `staff-resched-${appointmentId}-${newDate}-${newTime.replace(/\s+/g, '')}`,
+        eventId: `staff-resched-${appointmentId}-${staffUid}-${newDate}-${newTime.replace(/\s+/g, '')}`,
       });
     } catch (err) {
       console.warn('Failed to send staff reschedule notification:', err);
     }
+  }
+}
+
+/**
+ * Assign a crew (or solo staff member) and confirm a booking (Owner action).
+ * Everyone in the unit can see and update the job; the customer and each member are notified.
+ */
+export async function confirmAppointmentWithUnit(
+  customerUid: string,
+  appointmentId: string,
+  unit: Unit,
+  adminUser: { uid: string; name?: string }
+): Promise<void> {
+  if (!adminUser?.uid) throw new Error('Admin authentication is required to confirm appointments.');
+  if (!unit || unit.memberUids.length === 0) throw new Error('Pick a crew or staff member first.');
+
+  const apptRef = doc(db, 'users', customerUid, 'appointments', appointmentId);
+  const snap = await getDoc(apptRef);
+  if (!snap.exists()) throw new Error('Appointment not found.');
+  const currentData = snap.data() as StoredAppointment;
+  if (currentData.status === 'Cancelled') throw new Error('Cannot confirm a cancelled appointment.');
+  if (currentData.completed) throw new Error('Cannot confirm an already completed appointment.');
+
+  const payload = {
+    assignedStaffUid: unit.memberUids[0],
+    assignedStaffUids: unit.memberUids,
+    unitId: unit.id,
+    unitLabel: unit.label,
+    staffName: unit.label,
+    staffStatus: 'Assigned',
+    confirmed: true,
+    status: 'Confirmed',
+    statusColor: 'reward-green',
+    confirmedAt: Date.now(),
+    confirmedBy: adminUser.uid,
+    confirmedByName: adminUser.name || 'Owner',
+    confirmedByRole: 'admin',
+    updatedAt: serverTimestamp(),
+  };
+  await setDoc(apptRef, payload, { merge: true });
+
+  if (currentData.bookingDate && typeof currentData.startHour === 'number') {
+    await saveBookedSlot({
+      id: appointmentId,
+      customerUid,
+      date: currentData.bookingDate,
+      startHour: currentData.startHour,
+      workHours: currentData.workHours || 1,
+      type: workTypeForService(currentData.serviceType),
+      unitId: unit.id,
+    }).catch((e) => console.warn('Could not update booked slot:', e));
+  }
+
+  const when = `${currentData.date} at ${currentData.time}`;
+  const crewText = unit.kind === 'crew' ? `${unit.label} are` : `${unit.label} is`;
+  try {
+    await sendCustomerNotification(customerUid, {
+      title: 'Appointment Confirmed',
+      message: `Your ${currentData.packageName || 'wash'} on ${when} is confirmed. ${crewText} on the job.`,
+      category: 'appointments',
+      icon: 'calendar',
+      link: `/dashboard/customer/appointments?id=${appointmentId}`,
+      eventId: `appt-confirm-${appointmentId}-${unit.id}`,
+    });
+  } catch (err) {
+    console.warn('Failed to send customer confirmation notification:', err);
+  }
+
+  for (const [i, staffUid] of unit.memberUids.entries()) {
+    const partners = unit.memberNames.filter((_, j) => j !== i);
+    try {
+      await sendCustomerNotification(staffUid, {
+        title: 'New job assigned',
+        message: `${currentData.customerName || 'A customer'} (${currentData.packageName || 'wash'}) on ${when}${
+          partners.length ? `, with ${partners.join(' and ')}` : ''
+        }.`,
+        category: 'appointments',
+        icon: 'calendar',
+        link: '/dashboard/staff/appointments',
+        eventId: `staff-job-${appointmentId}-${staffUid}`,
+      });
+    } catch (err) {
+      console.warn('Failed to send staff assignment notification:', err);
+    }
+  }
+}
+
+/**
+ * Customer reschedule to a free time. No approval needed: the booking moves straight away,
+ * the crew is unassigned and the booking goes back to the admin to assign a crew.
+ */
+export async function customerRescheduleAppointment(
+  customerUid: string,
+  appointment: StoredAppointment,
+  next: { date: string; time: string; bookingDate: string; startHour: number; workHours: number },
+  /** Other details the customer changed on the reschedule form (vehicle, address, service type…) */
+  extra: Partial<StoredAppointment> = {}
+): Promise<void> {
+  const apptRef = doc(db, 'users', customerUid, 'appointments', appointment.id);
+  const previousStaff = appointment.assignedStaffUids?.length
+    ? appointment.assignedStaffUids
+    : appointment.assignedStaffUid
+      ? [appointment.assignedStaffUid]
+      : [];
+
+  await setDoc(
+    apptRef,
+    {
+      ...extra,
+      date: next.date,
+      time: next.time,
+      bookingDate: next.bookingDate,
+      startHour: next.startHour,
+      workHours: next.workHours,
+      previousSchedule: { date: appointment.date, time: appointment.time },
+      previousAssignedStaffUids: previousStaff,
+      assignedStaffUid: null,
+      assignedStaffUids: [],
+      unitId: null,
+      unitLabel: '',
+      staffName: 'Pending Assignment',
+      staffStatus: 'Finding Staff...',
+      confirmed: false,
+      status: 'Awaiting Confirmation',
+      statusColor: 'amber',
+      rescheduledByOwner: false,
+      rescheduledAt: Date.now(),
+      rescheduledBy: customerUid,
+      rescheduledByRole: 'customer',
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  await saveBookedSlot({
+    id: appointment.id,
+    customerUid,
+    date: next.bookingDate,
+    startHour: next.startHour,
+    workHours: next.workHours,
+    type: workTypeForService(extra.serviceType ?? appointment.serviceType),
+    unitId: null,
+  });
+
+  try {
+    const current = getStoredAppointments(customerUid);
+    const updated = current.map((a) =>
+      a.id === appointment.id
+        ? { ...a, date: next.date, time: next.time, status: 'Awaiting Confirmation', confirmed: false, assignedStaffUid: undefined }
+        : a
+    );
+    localStorage.setItem(getAppointmentsStorageKey(customerUid), JSON.stringify(updated));
+  } catch {
+    // cache is best-effort
   }
 }
 

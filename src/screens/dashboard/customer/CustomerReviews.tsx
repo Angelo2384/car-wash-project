@@ -207,6 +207,13 @@ export default function CustomerReviews() {
       serviceName: appt?.packageName || customServiceName,
       serviceId: appt?.id || 'standard-service',
       appointmentId: appt ? appt.id : undefined,
+      // Lets the crew who did the job see this review
+      ...(appt && (appt.assignedStaffUids?.length || appt.assignedStaffUid)
+        ? {
+            staffUids: appt.assignedStaffUids?.length ? appt.assignedStaffUids : [appt.assignedStaffUid as string],
+            ...(appt.staffName ? { staffName: appt.staffName } : {}),
+          }
+        : {}),
       appointmentDate: appt ? `${appt.date} • ${appt.time}` : undefined,
       rating,
       comment: comment.trim(),
@@ -437,7 +444,7 @@ export default function CustomerReviews() {
         {/* ────────── LEFT COLUMN: WRITE A REVIEW FORM ────────── */}
         <div className="lg:col-span-5 bg-[#171717] border border-[#2C2C2C] rounded-2xl p-6 sm:p-7 shadow-xl relative overflow-hidden">
           {/* Accent top line */}
-          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#FFA26B] to-[#E86A33]" />
+          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
 
           <div className="flex items-center justify-between border-b border-[#2C2C2C] pb-4 mb-6">
             <div>
@@ -529,7 +536,7 @@ export default function CustomerReviews() {
                       <Star
                         className={`w-7 h-7 transition-colors ${
                           isFilled
-                            ? 'text-[#E86A33] fill-[#E86A33] filter drop-shadow-[0_0_8px_rgba(232,106,51,0.5)]'
+                            ? 'text-[#E86A33] fill-[#E86A33]'
                             : 'text-[#3C3C3C] fill-transparent hover:text-[#E86A33]/50'
                         }`}
                       />
@@ -634,7 +641,7 @@ export default function CustomerReviews() {
               variant="primary"
               fullWidth
               isLoading={isSubmitting}
-              className="py-3.5 text-sm font-semibold shadow-lg shadow-[#E86A33]/20 mt-2"
+              className="py-3.5 text-sm font-semibold mt-2"
             >
               <MessageSquare className="w-4 h-4" />
               Submit Review
@@ -818,7 +825,7 @@ export default function CustomerReviews() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative w-full max-w-lg bg-[#171717] border border-[#2C2C2C] rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col gap-5 overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Top accent bar */}
-            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#FFA26B] to-[#E86A33]" />
+            <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E86A33] via-[#E86A33]/50 to-transparent" />
 
             <div className="flex items-start justify-between">
               <div>
@@ -994,7 +1001,7 @@ export default function CustomerReviews() {
                 type="button"
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-lg shadow-red-600/20"
+                className="flex-1 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isDeleting ? 'Deleting...' : 'Delete Review'}
               </button>

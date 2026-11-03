@@ -419,7 +419,7 @@ export default function AdminNotifications() {
                     onClick={() => setActiveTab(tab.key)}
                     className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all duration-150 cursor-pointer ${
                       activeTab === tab.key
-                        ? "bg-[#E86A33] text-white shadow-[0_0_12px_rgba(232,106,51,0.25)]"
+                        ? "bg-[#E86A33] text-white"
                         : "text-[#71717A] hover:text-[#F5F5F5] hover:bg-white/[0.04]"
                     }`}
                   >

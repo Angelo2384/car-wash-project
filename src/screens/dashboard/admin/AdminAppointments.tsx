@@ -1,822 +1,412 @@
-
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  Calendar,
-  Clock,
-  Car,
-  MapPin,
-  Search,
-  CheckCircle2,
-  XCircle,
-  CalendarDays,
-  User,
-  Phone,
-  Mail,
-  AlertCircle,
-  RefreshCw,
-  Sparkles,
-  UserCheck,
-  UserPlus,
-} from 'lucide-react';
-import { useAuth } from '../../../contexts/AuthContext';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AlertCircle, CalendarClock, MapPin, RefreshCw, Search, UserPlus, XCircle } from 'lucide-react';
 import { useToast } from '../../../contexts/ToastContext';
 import {
   subscribeToAllAppointments,
   subscribeToStaffMembers,
-  confirmAppointmentByOwner,
   getDynamicAppointmentStatus,
+  parseAppointmentDateTime,
   type StoredAppointment,
   type StaffMember,
 } from '../../../lib/appointments';
-import { Button } from '../../../components/ui/Button';
+import { fromIsoDate } from '../../../lib/business';
+import AppointmentCrewAssign from '../../../components/admin/AppointmentCrewAssign';
+import { Badge, Card, EmptyState, Modal, Tabs, type BadgeTone } from '../../../components/admin/AdminUI';
+import { secondaryButton, smallButton } from '../../../components/admin/adminStyles';
+import { useCrews, useServices, useStaffSettings } from '../../../hooks/useOperations';
 
-type FilterTab = 'all' | 'awaiting' | 'confirmed' | 'cancelled' | 'completed';
+type Appointment = StoredAppointment & { customerUid: string };
+type Bucket = 'awaiting' | 'confirmed' | 'completed' | 'cancelled';
+type FilterTab = 'all' | Bucket;
+
+const BUCKET_LABEL: Record<Bucket, string> = {
+  awaiting: 'Needs a crew',
+  confirmed: 'Confirmed',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+};
+const BUCKET_TONE: Record<Bucket, BadgeTone> = {
+  awaiting: 'amber',
+  confirmed: 'green',
+  completed: 'neutral',
+  cancelled: 'red',
+};
+
+/** One status per booking, so the tabs and their counts always agree. */
+function bucketOf(appt: StoredAppointment): Bucket {
+  const dyn = getDynamicAppointmentStatus(
+    appt.date,
+    appt.time,
+    appt.status === 'Missed',
+    appt.completed,
+    false,
+    appt.status,
+    appt.confirmed,
+    appt.staffStatus
+  );
+  if (appt.status === 'Cancelled' || dyn.status === 'Cancelled') return 'cancelled';
+  if (appt.completed === true || dyn.status === 'Completed') return 'completed';
+  if (appt.confirmed === false || dyn.status === 'Awaiting Confirmation') return 'awaiting';
+  return 'confirmed';
+}
+
+function whenOf(appt: StoredAppointment) {
+  const at = parseAppointmentDateTime(appt.date, appt.time);
+  const day = appt.bookingDate
+    ? fromIsoDate(appt.bookingDate).toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short' })
+    : at
+      ? at.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short' })
+      : appt.date;
+  return { at, day, time: appt.time };
+}
 
 export default function AdminAppointments() {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
   const { showToast } = useToast();
 
-  const [appointments, setAppointments] = useState<(StoredAppointment & { customerUid: string })[]>([]);
-  // null = first load pending, false = not loading, true = loading
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  // null = no error, string = permission or network error message
   const [loadError, setLoadError] = useState<string | null>(null);
-  // tracks whether we've ever received a successful snapshot (even empty)
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-
-  // Search & Filter state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterTab, setFilterTab] = useState<FilterTab>('all');
-  const sortOrder: 'newest' | 'date_asc' | 'date_desc' = 'newest';
-
-  // Confirmation action in-progress tracker: appointmentId -> boolean
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-
-  // Staff members populated from authoritative pre_registered_staff records
-  const [staffList, setStaffList] = useState<StaffMember[]>([]);
-  const [isStaffLoading, setIsStaffLoading] = useState(true);
-  const [staffError, setStaffError] = useState<string | null>(null);
-
-  // Selected staff member per appointment: appointmentId -> staffUid
-  const [selectedStaffMap, setSelectedStaffMap] = useState<Record<string, string>>({});
-
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Subscribe to real-time staff members list
-  useEffect(() => {
-    setIsStaffLoading(true);
-    setStaffError(null);
-    const unsubStaff = subscribeToStaffMembers(
-      (list) => {
-        setStaffList(list);
-        setIsStaffLoading(false);
-        setStaffError(null);
-      },
-      (err) => {
-        console.warn('Failed to load real staff members:', err);
-        const errMsg = err?.message || 'Failed to load staff list';
-        setStaffError(errMsg);
-        setIsStaffLoading(false);
-        showToast(`Failed to load staff accounts: ${errMsg}`, 'error');
-      }
-    );
-    return () => unsubStaff();
-  }, []);
+  // ?search=<ref> (e.g. from the Schedule) pre-fills the search box
+  const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
+  const [filterTab, setFilterTab] = useState<FilterTab>('all');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Subscribe to real-time appointments across all customers
-  useEffect(() => {
-    setIsLoading(true);
-    setLoadError(null);
-    setHasLoadedOnce(false);
+  const { items: services } = useServices();
+  const staffSettings = useStaffSettings();
+  const crews = useCrews();
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [now] = useState(() => Date.now());
 
-    const unsubscribe = subscribeToAllAppointments(
+  useEffect(
+    () =>
+      subscribeToStaffMembers(setStaffList, (err) =>
+        showToast(`Couldn't load staff: ${err?.message || 'unknown error'}`, 'error')
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- subscribe once; showToast changes every render
+    []
+  );
+
+  useEffect(() => {
+    return subscribeToAllAppointments(
       (list) => {
         setAppointments(list);
         setIsLoading(false);
-        setLoadError(null); // clear any prior error on successful snapshot
-        setHasLoadedOnce(true);
+        setLoadError(null);
       },
       (err) => {
-        console.error('Admin appointments subscription failed:', err);
         const isPermission = err?.code === 'permission-denied' || /permission/i.test(err?.message || '');
         setLoadError(
           isPermission
-            ? 'Permission denied — the Firestore security rules do not grant this account admin access to the appointments collection group yet. Deploy the updated firestore.rules file to Firebase to fix this.'
-            : (err?.message || 'Failed to load customer appointments.')
+            ? "This account isn't allowed to read appointments. Check the user's role is admin and the Firestore rules are deployed."
+            : err?.message || "Couldn't load appointments."
         );
         setIsLoading(false);
-        // don't wipe the appointments list if we had data before the error
       }
     );
-
-    return () => unsubscribe();
   }, [refreshKey]);
 
-  // Filtered and sorted appointments
-  const filteredAppointments = useMemo(() => {
-    return appointments
-      .filter((appt) => {
-        const dyn = getDynamicAppointmentStatus(
-          appt.date,
-          appt.time,
-          appt.status === 'Missed',
-          appt.completed,
-          false,
-          appt.status,
-          appt.confirmed,
-          appt.staffStatus
-        );
+  const rows = useMemo(
+    () => appointments.map((appt) => ({ appt, bucket: bucketOf(appt), when: whenOf(appt) })),
+    [appointments]
+  );
 
-        // Tab filter
-        if (filterTab === 'awaiting') {
-          return dyn.status === 'Awaiting Confirmation' || appt.confirmed === false;
-        }
-        if (filterTab === 'confirmed') {
-          return dyn.status === 'Confirmed' && appt.status !== 'Cancelled' && !appt.completed;
-        }
-        if (filterTab === 'cancelled') {
-          return dyn.status === 'Cancelled' || appt.status === 'Cancelled';
-        }
-        if (filterTab === 'completed') {
-          return dyn.status === 'Completed' || appt.completed === true;
-        }
-        return true; // 'all'
-      })
-      .filter((appt) => {
-        if (!searchQuery.trim()) return true;
-        const query = searchQuery.toLowerCase().trim();
-        const refId = appt.id.toLowerCase();
-        const cName = (appt.customerName || '').toLowerCase();
-        const cEmail = (appt.customerEmail || '').toLowerCase();
-        const cPhone = (appt.customerPhone || '').toLowerCase();
-        const pkg = (appt.packageName || '').toLowerCase();
-        const veh = (appt.vehicle || '').toLowerCase();
-        const loc = (appt.address || appt.location || '').toLowerCase();
+  const counts = useMemo(() => {
+    const c: Record<Bucket, number> = { awaiting: 0, confirmed: 0, completed: 0, cancelled: 0 };
+    rows.forEach((r) => c[r.bucket]++);
+    return c;
+  }, [rows]);
 
-        return (
-          refId.includes(query) ||
-          cName.includes(query) ||
-          cEmail.includes(query) ||
-          cPhone.includes(query) ||
-          pkg.includes(query) ||
-          veh.includes(query) ||
-          loc.includes(query)
-        );
-      })
+  const visible = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return rows
+      .filter((r) => filterTab === 'all' || r.bucket === filterTab)
+      .filter(({ appt }) =>
+        !q
+          ? true
+          : [appt.id, appt.customerName, appt.customerEmail, appt.customerPhone, appt.packageName, appt.vehicle, appt.address, appt.location, appt.staffName]
+              .filter(Boolean)
+              .some((v) => String(v).toLowerCase().includes(q))
+      )
       .sort((a, b) => {
-        if (sortOrder === 'newest') {
-          return (b.createdAt || 0) - (a.createdAt || 0);
-        }
-        // Date sort fallback to createdAt
-        return sortOrder === 'date_asc'
-          ? (a.createdAt || 0) - (b.createdAt || 0)
-          : (b.createdAt || 0) - (a.createdAt || 0);
+        // Upcoming bookings first (soonest at the top), then past ones (most recent first)
+        const ta = a.when.at?.getTime() ?? a.appt.createdAt ?? 0;
+        const tb = b.when.at?.getTime() ?? b.appt.createdAt ?? 0;
+        const fa = ta >= now;
+        const fb = tb >= now;
+        if (fa !== fb) return fa ? -1 : 1;
+        return fa ? ta - tb : tb - ta;
       });
-  }, [appointments, filterTab, searchQuery, sortOrder]);
+  }, [rows, filterTab, searchQuery, now]);
 
-  // Statistics counters
-  const stats = useMemo(() => {
-    let awaiting = 0;
-    let confirmed = 0;
-    let cancelled = 0;
-    let completed = 0;
-
-    appointments.forEach((appt) => {
-      const dyn = getDynamicAppointmentStatus(
-        appt.date,
-        appt.time,
-        appt.status === 'Missed',
-        appt.completed,
-        false,
-        appt.status,
-        appt.confirmed,
-        appt.staffStatus
-      );
-
-      if (dyn.status === 'Awaiting Confirmation' || appt.confirmed === false) awaiting++;
-      else if (dyn.status === 'Cancelled' || appt.status === 'Cancelled') cancelled++;
-      else if (dyn.status === 'Completed' || appt.completed === true) completed++;
-      else confirmed++;
-    });
-
-    return {
-      total: appointments.length,
-      awaiting,
-      confirmed,
-      cancelled,
-      completed,
-    };
-  }, [appointments]);
-
-  // Handle owner staff assignment & confirmation action
-  const handleConfirm = async (appt: StoredAppointment & { customerUid: string }) => {
-    if (!currentUser || !currentUser.uid) {
-      showToast('You must be signed in as an administrator to confirm appointments.', 'error');
-      return;
-    }
-
-    if (!appt.customerUid?.trim() || !appt.id?.trim()) {
-      showToast('Missing customer or appointment identifier.', 'error');
-      return;
-    }
-
-    if (appt.status === 'Cancelled') {
-      showToast('Cannot confirm a cancelled appointment.', 'error');
-      return;
-    }
-
-    if (appt.completed) {
-      showToast('Cannot confirm an already completed appointment.', 'error');
-      return;
-    }
-
-    const selectedStaffUid = selectedStaffMap[appt.id];
-    if (!selectedStaffUid) {
-      showToast('Please select a staff member to assign to this booking before confirming.', 'error');
-      return;
-    }
-
-    const selectedStaff = staffList.find((s) => s.uid === selectedStaffUid && s.isActivated);
-    if (!selectedStaff || !selectedStaff.uid || !selectedStaff.name?.trim()) {
-      showToast('Selected staff member is invalid or not yet activated. Please select an active staff member.', 'error');
-      return;
-    }
-
-    if (confirmingId === appt.id) return; // Prevent duplicate submissions
-    setConfirmingId(appt.id);
-
-    try {
-      await confirmAppointmentByOwner(
-        appt.customerUid,
-        appt.id,
-        {
-          uid: selectedStaff.uid,
-          name: selectedStaff.name,
-        },
-        {
-          uid: currentUser.uid,
-          name: currentUser.displayName || 'Owner',
-        }
-      );
-      showToast('Appointment confirmed successfully', 'success');
-    } catch (err: any) {
-      console.error('Failed to confirm appointment:', err);
-      showToast(err?.message || 'Failed to confirm appointment. Please try again.', 'error');
-    } finally {
-      setConfirmingId(null);
-    }
+  const refresh = () => {
+    setIsLoading(true);
+    setLoadError(null);
+    setRefreshKey((k) => k + 1);
   };
 
-  const getStatusBadge = (appt: StoredAppointment) => {
-    const dyn = getDynamicAppointmentStatus(
-      appt.date,
-      appt.time,
-      appt.status === 'Missed',
-      appt.completed,
-      false,
-      appt.status,
-      appt.confirmed,
-      appt.staffStatus
-    );
-
-    if (dyn.status === 'Cancelled') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/30">
-          <XCircle className="w-3.5 h-3.5" />
-          Cancelled
-        </span>
-      );
-    }
-
-    if (dyn.status === 'Completed') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          Completed
-        </span>
-      );
-    }
-
-    if (dyn.status === 'Awaiting Confirmation') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30 animate-pulse">
-          <Clock className="w-3.5 h-3.5" />
-          Awaiting Confirmation
-        </span>
-      );
-    }
-
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#35B86B]/15 text-[#35B86B] border border-[#35B86B]/30">
-        <CheckCircle2 className="w-3.5 h-3.5" />
-        Confirmed
-      </span>
-    );
-  };
+  const selected = rows.find((r) => r.appt.id === selectedId) ?? null;
+  const goReschedule = (appt: Appointment) =>
+    navigate(`/dashboard/admin/appointments/reschedule/${appt.customerUid}/${appt.id}`, { state: { appointment: appt } });
+  const goCancel = (appt: Appointment) =>
+    navigate(`/dashboard/admin/appointments/cancel/${appt.customerUid}/${appt.id}`, { state: { appointment: appt } });
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-forwards text-[#F5F5F5] font-sans pb-12">
-      {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => {
-              setRefreshKey((prev) => prev + 1);
-            }}
-            className="p-2.5 rounded-xl bg-[#171717] border border-[#2C2C2C] text-[#A1A1AA] hover:text-[#F5F5F5] hover:border-[#E86A33]/50 transition-colors flex items-center gap-2 text-xs font-medium cursor-pointer"
-            title="Refresh Live Appointments"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-[#E86A33]' : ''}`} />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
-        </div>
-      </div>
+    <div className="flex flex-col gap-5 pb-10 text-[#F5F5F5]">
+      <Tabs<FilterTab>
+        value={filterTab}
+        onChange={setFilterTab}
+        tabs={[
+          { id: 'all', label: 'All', count: rows.length },
+          { id: 'awaiting', label: 'Needs a crew', count: counts.awaiting },
+          { id: 'confirmed', label: 'Confirmed', count: counts.confirmed },
+          { id: 'completed', label: 'Completed', count: counts.completed },
+          { id: 'cancelled', label: 'Cancelled', count: counts.cancelled },
+        ]}
+      />
 
-      {/* ── Summary Metrics Strip ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
-        <button
-          onClick={() => setFilterTab('all')}
-          className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
-            filterTab === 'all'
-              ? 'bg-[#E86A33]/10 border-[#E86A33] shadow-md shadow-[#E86A33]/10'
-              : 'bg-[#171717] border-[#2C2C2C] hover:border-[#3C3C3C]'
-          }`}
-        >
-          <span className="text-xs text-[#A1A1AA] font-medium block">All Appointments</span>
-          <span className="text-2xl font-bold font-display text-[#F5F5F5] mt-1 block">
-            {stats.total}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setFilterTab('awaiting')}
-          className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
-            filterTab === 'awaiting'
-              ? 'bg-amber-500/10 border-amber-500 shadow-md shadow-amber-500/10'
-              : 'bg-[#171717] border-[#2C2C2C] hover:border-[#3C3C3C]'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-amber-400 font-medium block">Awaiting Confirmation</span>
-            {stats.awaiting > 0 && (
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-            )}
-          </div>
-          <span className="text-2xl font-bold font-display text-amber-400 mt-1 block">
-            {stats.awaiting}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setFilterTab('confirmed')}
-          className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
-            filterTab === 'confirmed'
-              ? 'bg-[#E86A33]/10 border-[#E86A33] shadow-md shadow-[#E86A33]/10'
-              : 'bg-[#171717] border-[#2C2C2C] hover:border-[#3C3C3C]'
-          }`}
-        >
-          <span className="text-xs text-[#E86A33] font-medium block">Confirmed</span>
-          <span className="text-2xl font-bold font-display text-[#E86A33] mt-1 block">
-            {stats.confirmed}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setFilterTab('cancelled')}
-          className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
-            filterTab === 'cancelled'
-              ? 'bg-red-500/10 border-red-500 shadow-md shadow-red-500/10'
-              : 'bg-[#171717] border-[#2C2C2C] hover:border-[#3C3C3C]'
-          }`}
-        >
-          <span className="text-xs text-red-400 font-medium block">Cancelled</span>
-          <span className="text-2xl font-bold font-display text-red-400 mt-1 block">
-            {stats.cancelled}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setFilterTab('completed')}
-          className={`p-4 rounded-xl border text-left transition-all cursor-pointer col-span-2 lg:col-span-1 ${
-            filterTab === 'completed'
-              ? 'bg-[#35B86B]/10 border-[#35B86B] shadow-md shadow-[#35B86B]/10'
-              : 'bg-[#171717] border-[#2C2C2C] hover:border-[#3C3C3C]'
-          }`}
-        >
-          <span className="text-xs text-[#35B86B] font-medium block">Completed</span>
-          <span className="text-2xl font-bold font-display text-[#35B86B] mt-1 block">
-            {stats.completed}
-          </span>
-        </button>
-      </div>
-
-      {/* ── Search and Filter Controls ── */}
-      <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
-        {/* Search Input */}
-        <div className="relative w-full md:w-96">
-          <Search className="w-4 h-4 text-[#71717A] absolute left-3.5 top-1/2 -translate-y-1/2" />
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[220px] max-w-md">
+          <Search className="w-4 h-4 text-[#71717A] absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search by customer, ref ID, phone, vehicle..."
+            placeholder="Search customer, reference, phone, vehicle or crew"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#101010] border border-[#2C2C2C] rounded-xl pl-10 pr-4 py-2.5 text-sm text-[#F5F5F5] placeholder:text-[#71717A] focus:outline-none focus:border-[#E86A33] focus:ring-1 focus:ring-[#E86A33] transition-all"
+            className="w-full bg-[#101010] border border-[#2C2C2C] rounded-lg pl-9 pr-14 py-2.5 text-sm text-[#F5F5F5] placeholder:text-[#71717A] focus:outline-none focus:border-[#E86A33]"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#71717A] hover:text-[#F5F5F5]"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#71717A] hover:text-[#F5F5F5] cursor-pointer"
             >
               Clear
             </button>
           )}
         </div>
-
-        {/* Tab Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
-          <button
-            onClick={() => setFilterTab('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-              filterTab === 'all'
-                ? 'bg-[#E86A33] text-white'
-                : 'bg-[#101010] text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.04]'
-            }`}
-          >
-            All ({stats.total})
-          </button>
-          <button
-            onClick={() => setFilterTab('awaiting')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-              filterTab === 'awaiting'
-                ? 'bg-amber-500 text-black font-bold'
-                : 'bg-[#101010] text-amber-400/90 hover:bg-amber-500/10'
-            }`}
-          >
-            Awaiting ({stats.awaiting})
-          </button>
-          <button
-            onClick={() => setFilterTab('confirmed')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-              filterTab === 'confirmed'
-                ? 'bg-[#E86A33] text-white'
-                : 'bg-[#101010] text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.04]'
-            }`}
-          >
-            Confirmed ({stats.confirmed})
-          </button>
-          <button
-            onClick={() => setFilterTab('cancelled')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-              filterTab === 'cancelled'
-                ? 'bg-red-500 text-white'
-                : 'bg-[#101010] text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.04]'
-            }`}
-          >
-            Cancelled ({stats.cancelled})
-          </button>
-          <button
-            onClick={() => setFilterTab('completed')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-              filterTab === 'completed'
-                ? 'bg-[#35B86B] text-white'
-                : 'bg-[#101010] text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-white/[0.04]'
-            }`}
-          >
-            Completed ({stats.completed})
-          </button>
-        </div>
+        <button onClick={refresh} className={smallButton} title="Reload appointments">
+          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
       </div>
 
-      {/* ── Error Banner — only shown when not loading ── */}
-      {!isLoading && loadError && (
+      {loadError && !isLoading && (
         <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <h4 className="text-sm font-semibold text-red-400">Failed to load appointments</h4>
-            <p className="text-xs text-red-300/80 mt-1 leading-relaxed">{loadError}</p>
-          </div>
-          <button
-            onClick={() => setRefreshKey((prev) => prev + 1)}
-            className="text-xs text-red-400 underline font-medium hover:text-red-300 shrink-0 cursor-pointer"
-          >
+          <p className="flex-1 text-sm text-red-300">{loadError}</p>
+          <button onClick={refresh} className="text-xs text-red-400 underline font-medium cursor-pointer">
             Retry
           </button>
         </div>
       )}
 
-      {/* ── Loading State ── */}
-      {isLoading && (
-        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-12 flex flex-col items-center justify-center text-center">
-          <RefreshCw className="w-8 h-8 text-[#E86A33] animate-spin mb-3" />
-          <p className="text-base font-semibold text-[#F5F5F5]">Loading appointments...</p>
-          <p className="text-xs text-[#71717A] mt-1">Connecting to Firestore real-time collection...</p>
-        </div>
-      )}
-
-      {/* ── Empty State — only shown after a successful load with no results ── */}
-      {!isLoading && !loadError && hasLoadedOnce && filteredAppointments.length === 0 && (
-        <div className="bg-[#171717] border border-[#2C2C2C] rounded-2xl p-12 flex flex-col items-center justify-center text-center">
-          <div className="w-12 h-12 rounded-2xl bg-[#101010] border border-[#2C2C2C] flex items-center justify-center mb-3">
-            <CalendarDays className="w-6 h-6 text-[#71717A]" />
-          </div>
-          <h3 className="text-lg font-semibold text-[#F5F5F5]">No appointments found</h3>
-          <p className="text-sm text-[#A1A1AA] max-w-sm mt-1">
-            {searchQuery
-              ? `No bookings match your search query "${searchQuery}". Try adjusting your filters.`
-              : filterTab === 'awaiting'
-              ? 'No appointments currently awaiting confirmation.'
-              : 'There are no appointments to display in this category.'}
-          </p>
-          {searchQuery && (
-            <Button
-              variant="outline"
-              onClick={() => setSearchQuery('')}
-              className="mt-4 !py-2 !px-4 !text-xs !border-[#2C2C2C] !text-[#F5F5F5]"
-            >
-              Reset Search
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* ── Appointments List — only shown when no blocking error ── */}
-      {!isLoading && !loadError && filteredAppointments.length > 0 && (
-        <div className="flex flex-col gap-4">
-          {filteredAppointments.map((appt) => {
-            const isAwaiting = appt.confirmed === false || appt.status === 'Awaiting Confirmation';
-            const isCancelled = appt.status === 'Cancelled';
-            const isCompleted = appt.completed === true || appt.status === 'Completed';
-            const isSaving = confirmingId === appt.id;
-
-            return (
-              <div
-                key={appt.id}
-                className={`bg-[#171717] border rounded-2xl p-5 md:p-6 transition-all duration-200 shadow-sm flex flex-col gap-5 ${
-                  isAwaiting
-                    ? 'border-amber-500/40 bg-gradient-to-r from-amber-500/[0.03] to-transparent hover:border-amber-500/60'
-                    : 'border-[#2C2C2C] hover:border-[#E86A33]/40'
-                }`}
-              >
-                {/* Row 1: Status, Reference ID, Rescheduled Badge, and Price */}
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#2C2C2C] pb-4">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    {getStatusBadge(appt)}
-
-                    <span className="font-mono text-xs font-bold text-[#A1A1AA] bg-[#101010] px-2.5 py-1 rounded-lg border border-[#2C2C2C]">
-                      #{appt.id}
-                    </span>
-
-                    {appt.serviceType && (
-                      <span className="text-xs px-2.5 py-1 rounded-lg bg-[#101010] text-[#D4D4D4] border border-[#2C2C2C] font-medium">
-                        {appt.serviceType}
+      <Card className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[920px]">
+          <thead>
+            <tr className="text-left text-[#71717A] text-xs">
+              <th className="px-5 py-3 font-medium">When</th>
+              <th className="px-3 py-3 font-medium">Customer</th>
+              <th className="px-3 py-3 font-medium">Booking</th>
+              <th className="px-3 py-3 font-medium">Crew</th>
+              <th className="px-3 py-3 font-medium">Status</th>
+              <th className="px-3 py-3 font-medium text-right">Total</th>
+              <th className="px-5 py-3 font-medium text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.length === 0 && (
+              <tr>
+                <td colSpan={7}>
+                  <EmptyState
+                    title={
+                      isLoading
+                        ? 'Loading appointments…'
+                        : searchQuery
+                          ? `No bookings match “${searchQuery}”`
+                          : filterTab === 'awaiting'
+                            ? 'Every booking has a crew'
+                            : 'No appointments here'
+                    }
+                  />
+                </td>
+              </tr>
+            )}
+            {visible.map(({ appt, bucket, when }) => {
+              const open = bucket === 'awaiting' || bucket === 'confirmed';
+              const past = (when.at?.getTime() ?? 0) < now;
+              return (
+                <tr
+                  key={appt.id}
+                  onClick={() => setSelectedId(appt.id)}
+                  className={`border-t border-[#2C2C2C] cursor-pointer hover:bg-[#1F1F1F] transition-colors ${
+                    !open ? 'text-[#A1A1AA]' : ''
+                  }`}
+                >
+                  <td className="px-5 py-3 whitespace-nowrap">
+                    <p className={`font-semibold ${open ? 'text-[#F5F5F5]' : ''}`}>{when.day}</p>
+                    <p className="text-xs text-[#71717A]">
+                      {when.time}
+                      {open && past ? ' · overdue' : ''}
+                    </p>
+                  </td>
+                  <td className="px-3 py-3 max-w-[200px]">
+                    <p className={`font-semibold truncate ${open ? 'text-[#F5F5F5]' : ''}`}>{appt.customerName || 'Customer'}</p>
+                    <p className="text-xs text-[#71717A] truncate">{appt.customerPhone || appt.customerEmail}</p>
+                  </td>
+                  <td className="px-3 py-3 max-w-[240px]">
+                    <p className="truncate">
+                      {appt.packageName}
+                      <span className="text-[#71717A]"> · {appt.serviceType === 'Drive-in' ? 'Drive-in' : 'Call-out'}</span>
+                    </p>
+                    <p className="text-xs text-[#71717A] truncate">{appt.vehicle}</p>
+                  </td>
+                  <td className="px-3 py-3" onClick={(e) => bucket === 'awaiting' && e.stopPropagation()}>
+                    {bucket === 'awaiting' ? (
+                      <button
+                        onClick={() => setSelectedId(appt.id)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#E86A33] hover:bg-[#d65f2c] text-white px-3 py-1.5 text-xs font-semibold cursor-pointer"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Assign crew
+                      </button>
+                    ) : (
+                      <span className="truncate block max-w-[160px]">
+                        {appt.staffName && appt.staffName !== 'Pending Assignment' ? appt.staffName : '—'}
                       </span>
                     )}
-
-                    {appt.rescheduledByOwner && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#E86A33]/15 text-[#E86A33] border border-[#E86A33]/30">
-                        <Sparkles className="w-3 h-3" />
-                        Rescheduled by owner
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-[#71717A]">Total</span>
-                    <span className="text-lg font-bold font-display text-[#F5F5F5]">
-                      {appt.price}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Row 2: Customer Info + Service & Vehicle + Schedule */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  {/* Customer Information Column */}
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
-                      Customer
-                    </span>
-                    <div className="flex items-start gap-3">
-                      <div className="w-9 h-9 rounded-full bg-[#101010] border border-[#2C2C2C] flex items-center justify-center shrink-0">
-                        <User className="w-4 h-4 text-[#E86A33]" />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-sm font-semibold text-[#F5F5F5] truncate">
-                          {appt.customerName || 'Customer'}
-                        </span>
-                        {appt.customerEmail && (
-                          <div className="flex items-center gap-1.5 text-xs text-[#A1A1AA] mt-0.5 truncate">
-                            <Mail className="w-3 h-3 shrink-0 text-[#71717A]" />
-                            <span className="truncate">{appt.customerEmail}</span>
-                          </div>
-                        )}
-                        {appt.customerPhone && (
-                          <div className="flex items-center gap-1.5 text-xs text-[#A1A1AA] mt-0.5">
-                            <Phone className="w-3 h-3 shrink-0 text-[#71717A]" />
-                            <span>{appt.customerPhone}</span>
-                          </div>
-                        )}
-                      </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge tone={BUCKET_TONE[bucket]}>{BUCKET_LABEL[bucket]}</Badge>
+                      {appt.rescheduledByRole === 'customer' && bucket === 'awaiting' && <Badge tone="orange">Moved</Badge>}
                     </div>
-                  </div>
-
-                  {/* Vehicle & Package Column */}
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
-                      Service & Vehicle
-                    </span>
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <Car className="w-4 h-4 text-[#E86A33] shrink-0" />
-                        <span className="text-sm font-medium text-[#F5F5F5] truncate">
-                          {appt.vehicle || 'Standard Vehicle'}
-                        </span>
-                      </div>
-                      <span className="text-xs text-[#A1A1AA] pl-6 font-medium">
-                        Package: {appt.packageName}
-                      </span>
-                      {appt.serviceType === 'Call-out' && (appt.address || appt.location) && (
-                        <div className="flex items-start gap-1.5 text-xs text-[#71717A] pl-6 mt-0.5">
-                          <MapPin className="w-3.5 h-3.5 shrink-0 text-[#E86A33] mt-0.5" />
-                          <span className="truncate">{appt.address || appt.location}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Schedule Column */}
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[11px] uppercase tracking-wider text-[#71717A] font-semibold">
-                      Scheduled Date & Time
-                    </span>
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2 text-sm font-medium text-[#F5F5F5]">
-                        <Calendar className="w-4 h-4 text-[#E86A33]" />
-                        <span>{appt.date}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-[#A1A1AA] pl-6">
-                        <Clock className="w-3.5 h-3.5 text-[#E86A33]" />
-                        <span>{appt.time}</span>
-                      </div>
-                      {appt.previousSchedule && (
-                        <div className="text-[11px] text-[#71717A] pl-6 line-through mt-0.5">
-                          Was: {appt.previousSchedule.date} at {appt.previousSchedule.time}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Optional Notes or Cancel Reason Banner */}
-                {appt.cancelReason && (
-                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-300 flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-semibold text-red-400">Cancellation Reason: </span>
-                      {appt.cancelReason}
-                      {appt.cancelledByName && (
-                        <span className="text-red-400/80 ml-2">
-                          (by {appt.cancelledByName})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {appt.notes && !appt.cancelReason && (
-                  <div className="p-3 rounded-xl bg-[#101010] border border-[#2C2C2C] text-xs text-[#A1A1AA]">
-                    <span className="text-[#71717A] font-medium mr-1.5">Customer Notes:</span>
-                    {appt.notes}
-                  </div>
-                )}
-
-                {/* Row 3: Action Buttons */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#2C2C2C]">
-                  <div className="text-xs text-[#71717A] flex items-center gap-2 flex-wrap">
-                    {appt.confirmed && appt.staffName && (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-[#35B86B] font-medium bg-[#35B86B]/10 px-2.5 py-1 rounded-lg border border-[#35B86B]/20">
-                        <UserCheck className="w-3.5 h-3.5 text-[#35B86B]" />
-                        Assigned to: <strong className="text-[#F5F5F5]">{appt.staffName}</strong>
-                      </span>
-                    )}
-                    {appt.confirmedByName && appt.confirmed && (
-                      <span className="text-[#71717A]">
-                        (Confirmed by {appt.confirmedByName})
-                      </span>
-                    )}
-                    {isCompleted && (
-                      <span className="text-[#35B86B]">Wash service completed</span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2.5 ml-auto">
-                    {/* Staff Selector and Assign & Confirm Action for Awaiting Confirmation */}
-                    {isAwaiting && !isCancelled && !isCompleted && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="relative">
-                          <select
-                            id={`staff-select-${appt.id}`}
-                            value={selectedStaffMap[appt.id] || ''}
-                            onChange={(e) =>
-                              setSelectedStaffMap((prev) => ({
-                                ...prev,
-                                [appt.id]: e.target.value,
-                              }))
-                            }
-                            disabled={isSaving || isStaffLoading || staffList.length === 0}
-                            aria-label="Assign staff member"
-                            className="bg-[#101010] border border-[#2C2C2C] text-[#F5F5F5] text-xs rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:border-[#E86A33] focus:ring-1 focus:ring-[#E86A33] transition-all cursor-pointer disabled:opacity-50 appearance-none font-medium max-w-[210px] truncate"
-                          >
-                            <option value="">
-                              {isStaffLoading
-                                ? 'Loading staff members...'
-                                : staffError
-                                ? `Error: ${staffError}`
-                                : staffList.length === 0
-                                ? 'No registered staff found'
-                                : 'Select staff member... *'}
-                            </option>
-                            {staffList.map((staff) => (
-                              <option
-                                key={staff.preRegDocId || staff.employeeId || staff.email || staff.uid}
-                                value={staff.isActivated ? staff.uid : ''}
-                                disabled={!staff.isActivated}
-                                className={staff.isActivated ? "bg-[#171717] text-[#F5F5F5]" : "bg-[#171717] text-[#71717A] italic"}
-                              >
-                                {staff.isActivated ? staff.name : `${staff.name} (Pending Activation)`}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#71717A]">
-                            <UserPlus className="w-3.5 h-3.5 text-[#E86A33]" />
-                          </div>
-                        </div>
-
-                        <Button
-                          variant="primary"
-                          isLoading={isSaving}
-                          disabled={!selectedStaffMap[appt.id] || isSaving || isStaffLoading}
-                          onClick={() => handleConfirm(appt)}
-                          className="!py-2 !px-3.5 !text-xs gap-1.5 font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={
-                            !selectedStaffMap[appt.id]
-                              ? 'Select a staff member before confirming'
-                              : 'Assign staff member and confirm booking'
-                          }
+                  </td>
+                  <td className={`px-3 py-3 text-right font-semibold whitespace-nowrap ${open ? 'text-[#F5F5F5]' : ''}`}>{appt.price}</td>
+                  <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
+                    {open ? (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button className={smallButton} onClick={() => goReschedule(appt)} title="Reschedule" aria-label={`Reschedule ${appt.id}`}>
+                          <CalendarClock className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          className={`${smallButton} hover:!border-red-500 hover:text-red-400`}
+                          onClick={() => goCancel(appt)}
+                          title="Cancel booking"
+                          aria-label={`Cancel ${appt.id}`}
                         >
-                          <CheckCircle2 className="w-4 h-4" />
-                          Assign & Confirm
-                        </Button>
+                          <XCircle className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    )}
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
 
-                    {/* Reschedule Action (Available for awaiting or confirmed, protected for terminal) */}
-                    {!isCancelled && !isCompleted && (
-                      <Button
-                        variant="outline"
-                        onClick={() =>
-                          navigate(
-                            `/dashboard/admin/appointments/reschedule/${appt.customerUid}/${appt.id}`,
-                            { state: { appointment: appt } }
-                          )
-                        }
-                        className="!py-2 !px-3.5 !text-xs gap-1.5 !border-[#2C2C2C] !text-[#F5F5F5] hover:!border-[#E86A33] hover:!text-[#E86A33]"
-                      >
-                        <Calendar className="w-3.5 h-3.5 text-[#E86A33]" />
-                        Reschedule
-                      </Button>
-                    )}
+      {selected && (
+        <Modal
+          title={`${selected.appt.customerName || 'Customer'} · ${selected.appt.packageName}`}
+          description={`${selected.appt.date} at ${selected.appt.time}`}
+          onClose={() => setSelectedId(null)}
+          footer={
+            selected.bucket === 'awaiting' || selected.bucket === 'confirmed' ? (
+              <>
+                <button onClick={() => goCancel(selected.appt)} className={`${secondaryButton} hover:!border-red-500 hover:text-red-400`}>
+                  Cancel booking
+                </button>
+                <button onClick={() => goReschedule(selected.appt)} className={secondaryButton}>
+                  Reschedule
+                </button>
+              </>
+            ) : undefined
+          }
+        >
+          <div className="flex flex-col gap-4 text-sm">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge tone={BUCKET_TONE[selected.bucket]}>{BUCKET_LABEL[selected.bucket]}</Badge>
+              <Badge tone={selected.appt.serviceType === 'Drive-in' ? 'blue' : 'orange'}>{selected.appt.serviceType}</Badge>
+              <span className="text-[#71717A] font-mono text-xs">#{selected.appt.id}</span>
+              <span className="ml-auto font-bold text-[#F5F5F5]">{selected.appt.price}</span>
+            </div>
 
-                    {/* Cancel Action (Available for awaiting or confirmed, protected for terminal) */}
-                    {!isCancelled && !isCompleted && (
-                      <Button
-                        variant="outline"
-                        onClick={() =>
-                          navigate(
-                            `/dashboard/admin/appointments/cancel/${appt.customerUid}/${appt.id}`,
-                            { state: { appointment: appt } }
-                          )
-                        }
-                        className="!py-2 !px-3.5 !text-xs gap-1.5 !border-[#2C2C2C] !text-[#EF4444] hover:!bg-red-500/10 hover:!border-red-500/50"
-                      >
-                        <XCircle className="w-3.5 h-3.5 text-[#EF4444]" />
-                        Cancel
-                      </Button>
-                    )}
+            <dl className="grid grid-cols-[110px_1fr] gap-y-2">
+              <dt className="text-[#71717A]">Vehicle</dt>
+              <dd className="text-[#F5F5F5]">{selected.appt.vehicle}</dd>
+              <dt className="text-[#71717A]">Phone</dt>
+              <dd className="text-[#F5F5F5]">{selected.appt.customerPhone || 'Not given'}</dd>
+              <dt className="text-[#71717A]">Email</dt>
+              <dd className="text-[#F5F5F5] break-all">{selected.appt.customerEmail || 'Not given'}</dd>
+              {selected.appt.serviceType !== 'Drive-in' && (selected.appt.address || selected.appt.location) && (
+                <>
+                  <dt className="text-[#71717A]">Address</dt>
+                  <dd className="text-[#F5F5F5] flex items-start gap-1.5">
+                    <MapPin className="w-4 h-4 text-[#E86A33] shrink-0 mt-0.5" />
+                    {selected.appt.address || selected.appt.location}
+                  </dd>
+                </>
+              )}
+              {selected.appt.customServiceNames?.length ? (
+                <>
+                  <dt className="text-[#71717A]">Services</dt>
+                  <dd className="text-[#F5F5F5]">{selected.appt.customServiceNames.join(', ')}</dd>
+                </>
+              ) : null}
+              {selected.bucket !== 'awaiting' && (
+                <>
+                  <dt className="text-[#71717A]">Crew</dt>
+                  <dd className="text-[#F5F5F5]">
+                    {selected.appt.staffName && selected.appt.staffName !== 'Pending Assignment' ? selected.appt.staffName : 'Not assigned'}
+                    {selected.appt.confirmedByName && <span className="text-[#71717A]"> · confirmed by {selected.appt.confirmedByName}</span>}
+                  </dd>
+                </>
+              )}
+              {selected.appt.previousSchedule && (
+                <>
+                  <dt className="text-[#71717A]">Moved from</dt>
+                  <dd className="text-[#A1A1AA]">
+                    {selected.appt.previousSchedule.date} at {selected.appt.previousSchedule.time}
+                    {selected.appt.rescheduledByRole === 'customer' ? ' (by the customer)' : ''}
+                  </dd>
+                </>
+              )}
+            </dl>
 
-                    {/* View Details / Protected Notice for terminal records */}
-                    {(isCancelled || isCompleted) && (
-                      <span className="text-xs text-[#71717A] italic py-1.5">
-                        Protected appointment history
-                      </span>
-                    )}
-                  </div>
-                </div>
+            {selected.appt.notes && (
+              <p className="rounded-lg bg-[#101010] border border-[#2C2C2C] px-3 py-2.5 text-[#A1A1AA]">
+                <span className="text-[#71717A]">Customer notes: </span>
+                {selected.appt.notes}
+              </p>
+            )}
+            {selected.appt.cancelReason && (
+              <p className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2.5 text-red-300">
+                <span className="font-semibold text-red-400">Cancelled: </span>
+                {selected.appt.cancelReason}
+                {selected.appt.cancelledByName && <span className="text-red-400/80"> (by {selected.appt.cancelledByName})</span>}
+              </p>
+            )}
+
+            {(selected.bucket === 'awaiting' || selected.bucket === 'confirmed') && (
+              <div className="border-t border-[#2C2C2C] pt-4 flex flex-col gap-2">
+                <p className="font-semibold text-[#F5F5F5]">{selected.bucket === 'awaiting' ? 'Assign a crew' : 'Change crew'}</p>
+                <AppointmentCrewAssign
+                  appt={selected.appt}
+                  appointments={appointments}
+                  services={services}
+                  staff={staffList}
+                  settings={staffSettings}
+                  crews={crews}
+                />
               </div>
-            );
-          })}
-        </div>
+            )}
+          </div>
+        </Modal>
       )}
     </div>
   );

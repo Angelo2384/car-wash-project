@@ -47,8 +47,7 @@ export default function AboutUsScreen() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
 
           {/* Left side: Our Story Card */}
-          <div className="bg-[#171717] rounded-2xl border border-[#E86A33]/30 p-8 md:p-12 shadow-[0_0_30px_rgba(232,106,51,0.05)] relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-[#E86A33]/5 blur-[80px] rounded-full group-hover:bg-[#E86A33]/10 transition-colors duration-700"></div>
+          <div className="bg-[#171717] rounded-2xl border border-[#E86A33]/30 p-8 md:p-12 relative overflow-hidden group">
 
             <div className="relative z-10">
               <div className="flex items-center gap-3 mb-8">
@@ -136,7 +135,7 @@ export default function AboutUsScreen() {
               <div key={idx} className="relative z-10 flex flex-col items-center bg-[#141414] px-4">
                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold mb-6 transition-colors duration-300 ${
                   step.active
-                    ? 'bg-[#E86A33] text-white shadow-[0_0_20px_rgba(232,106,51,0.3)]'
+                    ? 'bg-[#E86A33] text-white'
                     : 'bg-[#1C1C1C] text-[#71717A] border border-[#2C2C2C]'
                 }`}>
                   {step.num}
@@ -228,9 +227,6 @@ export default function AboutUsScreen() {
 
       {/* 6. Final Call To Action */}
       <section className="py-24 px-6 relative overflow-hidden">
-        <div className="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none">
-          <div className="w-[800px] h-[800px] rounded-full bg-[radial-gradient(circle_at_center,_rgba(232,106,51,0.15)_0%,_transparent_70%)]"></div>
-        </div>
 
         <div className="max-w-3xl mx-auto text-center relative z-10">
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-6 tracking-tight">
@@ -242,7 +238,7 @@ export default function AboutUsScreen() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
               onClick={() => navigate('/dashboard/customer/booking')}
-              className="px-8 py-3.5 rounded-lg bg-[#E86A33] text-white font-semibold text-sm hover:bg-[#E86A33]/90 transition-colors duration-200 shadow-[0_0_20px_rgba(232,106,51,0.3)]"
+              className="px-8 py-3.5 rounded-lg bg-[#E86A33] text-white font-semibold text-sm hover:bg-[#E86A33]/90 transition-colors duration-200"
             >
               Book a Service
             </button>

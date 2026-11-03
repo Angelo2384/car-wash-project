@@ -6,14 +6,20 @@ import { useNotifications } from '../../../contexts/NotificationsContext';
 import { useToast } from '../../../contexts/ToastContext';
 import { db } from '../../../lib/firebase';
 import {
-  updateAppointment,
+  customerRescheduleAppointment,
   calculateCallOutFee,
+  isRescheduleEligible,
   parseAppointmentDateTime,
   type StoredAppointment,
 } from '../../../lib/appointments';
+import { formatBookingDate, formatHour, toIsoDate, workHoursForPackageName } from '../../../lib/business';
+import { workTypeForService } from '../../../lib/scheduling';
+import { isSlotStillFree } from '../../../lib/availability';
+import { useBusinessSettings, useServices } from '../../../hooks/useOperations';
+import TimeSlotPicker from '../../../components/booking/TimeSlotPicker';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
-import { Calendar, Clock, Car, FileText, Hash, ArrowLeft, MapPin, AlertCircle, XCircle } from 'lucide-react';
+import { Calendar, Car, FileText, Hash, ArrowLeft, MapPin, AlertCircle, XCircle } from 'lucide-react';
 
 const PACKAGE_PRICES: Record<string, number> = {
   'Express Wash': 75,
@@ -88,8 +94,22 @@ export default function CustomerReschedule() {
   }, [currentUser?.uid]);
 
   const todayStr = new Date().toISOString().split('T')[0];
-  const [date, setDate] = useState(() => appointment?.date || todayStr);
-  const [time, setTime] = useState(() => appointment?.time || '10:00');
+  // The date input needs YYYY-MM-DD; older bookings only stored display text
+  const isoOf = (a?: StoredAppointment | null) => {
+    if (!a) return todayStr;
+    if (a.bookingDate) return a.bookingDate;
+    const when = parseAppointmentDateTime(a.date, a.time);
+    return when ? toIsoDate(when) : todayStr;
+  };
+  const [date, setDate] = useState(() => isoOf(appointment));
+  const [startHour, setStartHour] = useState<number | null>(null);
+  const time = startHour === null ? '' : formatHour(startHour);
+  const { items: services } = useServices();
+  const business = useBusinessSettings();
+  // Members can move a booking up to 2 hours before; everyone else up to 24 hours before
+  const leadHours = hasMembership ? 2 : 24;
+  const [openedAt] = useState(() => Date.now());
+  const notBefore = new Date(openedAt + leadHours * 3600000);
   const [serviceType, setServiceType] = useState<'Call-out' | 'Drive-in'>(() => (appointment?.serviceType as any) || 'Call-out');
   const [streetAddress, setStreetAddress] = useState(() => appointment?.address || appointment?.location || '123 Main St, Apartment Complex');
   const [vehicle, setVehicle] = useState(() => appointment?.vehicle || 'Ford F-150');
@@ -99,8 +119,8 @@ export default function CustomerReschedule() {
   // Reset form state when incoming appointment changes (fixes stale form state bug)
   useEffect(() => {
     if (appointment) {
-      setDate(appointment.date || todayStr);
-      setTime(appointment.time || '10:00');
+      setDate(isoOf(appointment));
+      setStartHour(null);
       setServiceType((appointment.serviceType as any) || 'Call-out');
       setStreetAddress(appointment.address || appointment.location || '123 Main St, Apartment Complex');
       setVehicle(appointment.vehicle || 'Ford F-150');
@@ -121,6 +141,8 @@ export default function CustomerReschedule() {
 
   // Dynamic calculations for base price, call-out fee, subtotal, VAT (15%), and total
   const parseBasePrice = (priceStr?: string, pkgName?: string): number => {
+    const listed = services.find((s) => s.name === pkgName);
+    if (listed) return listed.price;
     if (pkgName && PACKAGE_PRICES[pkgName]) return PACKAGE_PRICES[pkgName];
     if (!priceStr) return 150;
     const num = parseFloat(priceStr.replace(/[^0-9.]/g, ''));
@@ -128,7 +150,9 @@ export default function CustomerReschedule() {
   };
 
   const basePriceNum = parseBasePrice(appointment.price, appointment.packageName);
-  const callOutFee = calculateCallOutFee(serviceType, hasMembership);
+  const callOutFee = calculateCallOutFee(serviceType, hasMembership, business.callOutFee);
+  const workHours = appointment.workHours || workHoursForPackageName(services, appointment.packageName);
+  const canMove = isRescheduleEligible(appointment.date, appointment.time, hasMembership);
   const subtotalNum = basePriceNum + callOutFee;
   const vatNum = subtotalNum * 0.15;
   const totalNum = subtotalNum + vatNum;
@@ -151,10 +175,16 @@ export default function CustomerReschedule() {
       return;
     }
 
-    // Validate that the rescheduled date is not in the past
-    const target = parseAppointmentDateTime(date, time);
-    if (target && target.getTime() < Date.now()) {
-      setErrorBanner('Rescheduled date and time cannot be in the past.');
+    if (!canMove) {
+      setErrorBanner(
+        hasMembership
+          ? 'Bookings can only be moved up to 2 hours before they start. Contact us if you need help.'
+          : 'Bookings can only be moved up to 24 hours before they start. Members can move theirs up to 2 hours before.'
+      );
+      return;
+    }
+    if (startHour === null) {
+      setErrorBanner('Pick a new time. Greyed-out times are already taken.');
       return;
     }
 
@@ -162,35 +192,38 @@ export default function CustomerReschedule() {
 
     setIsSubmitting(true);
     try {
-      await updateAppointment(
-        appointment.id,
+      const free = await isSlotStillFree({
+        date,
+        type: workTypeForService(serviceType),
+        startHour,
+        workHours,
+        excludeId: appointment.id,
+      }).catch(() => true);
+      if (!free) {
+        setErrorBanner('That time was just taken. Pick another free time.');
+        setStartHour(null);
+        return;
+      }
+      await customerRescheduleAppointment(
+        currentUser?.uid || '',
+        appointment,
+        { date: formatBookingDate(date), time, bookingDate: date, startHour, workHours },
         {
-          ...appointment,
-          date,
-          time,
           serviceType,
           address: formattedAddress,
           location: formattedAddress,
           vehicle,
           notes,
           price: formattedTotal,
-          previousSchedule: {
-            date: appointment.date,
-            time: appointment.time,
-          },
-          rescheduledAt: Date.now(),
-          rescheduledBy: currentUser?.uid || '',
           rescheduledByName: currentUser?.displayName || 'Customer',
-          rescheduledByRole: 'customer',
-        },
-        currentUser?.uid
+        }
       );
 
       addNotification({
         category: 'appointments',
         icon: 'clock',
         title: 'Appointment Rescheduled',
-        message: `Your appointment for ${appointment.packageName} has been rescheduled to ${date} at ${time}.`,
+        message: `Your ${appointment.packageName} moved to ${formatBookingDate(date)} at ${time}. We'll confirm your crew shortly.`,
         link: '/dashboard/customer/appointments',
         eventId: `appt-resched-${appointment.id}-${Date.now()}`,
       });
@@ -321,6 +354,11 @@ export default function CustomerReschedule() {
           {/* Date & Time */}
           <div className="flex flex-col gap-4">
             <h3 className="text-lg font-semibold text-[#F5F5F5] mb-2">Date & Time</h3>
+            <p className={`text-sm -mt-2 ${canMove ? 'text-[#A1A1AA]' : 'text-amber-400'}`}>
+              {canMove
+                ? `Pick any free time at least ${leadHours} hours from now. Your crew is reassigned for the new time.`
+                : `It's too late to move this booking online: ${hasMembership ? 'members can move bookings up to 2 hours before' : 'bookings can be moved up to 24 hours before (2 hours for members)'}.`}
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input 
                 type="date"
@@ -328,23 +366,27 @@ export default function CustomerReschedule() {
                 value={date}
                 min={todayStr}
                 disabled={isAlreadyCancelled || isAlreadyCompleted || isSubmitting}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  setStartHour(null);
+                }}
                 icon={<Calendar className="w-5 h-5" />} 
                 className="!bg-[#101010] !border-[#2C2C2C] !text-[#F5F5F5] focus:!border-[#E86A33] focus:!ring-[#E86A33] [color-scheme:dark]"
                 labelClassName="!text-[#A1A1AA]"
                 iconClassName="!text-[#E86A33]"
               />
-              <Input 
-                type="time"
-                label="Select Time" 
-                value={time}
-                disabled={isAlreadyCancelled || isAlreadyCompleted || isSubmitting}
-                onChange={(e) => setTime(e.target.value)}
-                icon={<Clock className="w-5 h-5" />} 
-                className="!bg-[#101010] !border-[#2C2C2C] !text-[#F5F5F5] focus:!border-[#E86A33] focus:!ring-[#E86A33] [color-scheme:dark]"
-                labelClassName="!text-[#A1A1AA]"
-                iconClassName="!text-[#E86A33]"
-              />
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-[#A1A1AA] ml-1">Select Time</span>
+                <TimeSlotPicker
+                  date={date}
+                  type={workTypeForService(serviceType)}
+                  workHours={workHours}
+                  value={startHour}
+                  onChange={setStartHour}
+                  excludeId={appointment.id}
+                  notBefore={notBefore}
+                />
+              </div>
             </div>
           </div>
 
